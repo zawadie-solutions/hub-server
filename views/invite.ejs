@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<%- include('partials/head', { title: 'Activate your account — Zawadie AI Hub' }) %>
+</head>
+<body class="login-body">
+
+  <div class="login-shell">
+    <main class="login-form-panel">
+      <div class="login-form-card">
+        <div class="login-brandmark">
+          <img src="/images/zawadie-logo.png" alt="" />
+          <span>Zawadie AI Hub</span>
+        </div>
+        <h2>Activate your account</h2>
+        <% if (email) { %>
+        <p class="login-sub">Welcome, <%= email %>. Choose a password to finish setting up your account.</p>
+        <% } %>
+
+        <% if (error) { %>
+        <div class="form-error"><%= error %></div>
+        <% } %>
+
+        <% if (token) { %>
+        <form method="POST" action="/invite/<%= token %>" class="form" novalidate>
+          <label class="field">
+            <span>Password</span>
+            <input class="input" type="password" name="password" minlength="8" placeholder="At least 8 characters" required autofocus />
+          </label>
+          <label class="field">
+            <span>Confirm password</span>
+            <input class="input" type="password" name="confirm" minlength="8" required />
+          </label>
+          <button class="btn btn-primary btn-block" type="submit">Activate account</button>
+        </form>
+        <% } else { %>
+        <a class="btn btn-primary btn-block" href="/login">Back to sign in</a>
+        <% } %>
+      </div>
+    </main>
+  </div>
+
+</body>
+</html>

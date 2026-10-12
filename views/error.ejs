@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<%- include('partials/head', { title: code + ' — Zawadie AI Hub' }) %>
+</head>
+<body>
+<% if (user) { %>
+<%- include('partials/nav', { user: user, active: '' }) %>
+<% } %>
+<main class="page">
+  <div class="empty-state" style="margin-top:48px">
+    <div class="empty-state-title"><%= code %></div>
+    <p><%= message %></p>
+    <a class="btn btn-primary" href="/" style="margin-top:8px">Back to the hub</a>
+  </div>
+  <%- include('partials/footer') %>
+</main>
+</body>
+</html>

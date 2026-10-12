@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<%- include('partials/head', { title: 'Zawadie AI Hub' }) %>
+</head>
+<body>
+
+<%- include('partials/nav', { user: user, active: 'hub' }) %>
+
+<main class="page">
+
+  <div class="hero">
+    <div class="hero-eyebrow"><%= greeting %>, <%= displayName.split(' ')[0] %></div>
+    <h1>Zawadie Solutions Hub</h1>
+    <p>Every AI tool and system built by the Zawadie team, in one place — sign in once here to reach all of it.</p>
+
+    <% if (solutions.length > 0) { %>
+    <div class="hero-stats">
+      <div class="hero-stat"><strong><%= solutions.length %></strong> <span><%= solutions.length === 1 ? 'solution' : 'solutions' %> assigned to you</span></div>
+      <div class="hero-stat-divider"></div>
+      <div class="hero-stat"><strong class="dot-ok"><%= availableCount %></strong> <span>available now</span></div>
+      <% if (inDevCount > 0) { %>
+      <div class="hero-stat-divider"></div>
+      <div class="hero-stat"><strong class="dot-dev"><%= inDevCount %></strong> <span>in development</span></div>
+      <% } %>
+    </div>
+    <% } %>
+
+    <div class="search-wrap">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="solution-search" class="input search-input" type="text" placeholder="Search solutions... (press / to focus)" autocomplete="off" />
+    </div>
+
+    <% if (categories.length > 1) { %>
+    <div class="category-row" id="category-row">
+      <button type="button" class="category-chip is-active" data-category="">All</button>
+      <% categories.forEach(function (cat) { %>
+      <button type="button" class="category-chip" data-category="<%= cat.toLowerCase() %>"><%= cat %></button>
+      <% }) %>
+    </div>
+    <% } %>
+  </div>
+
+  <div class="section-header">
+    <h2>Your solutions</h2>
+    <p>Open the tools your admin has given you access to.</p>
+  </div>
+
+  <% if (solutions.length === 0) { %>
+  <div class="empty-state">
+    <div class="empty-state-title">No solutions assigned yet</div>
+    <p>Your admin hasn't given your account access to any solutions. Ask them to add it in the admin panel.</p>
+  </div>
+  <% } else { %>
+  <div class="solutions-grid">
+    <% solutions.forEach(function (sol) { %>
+    <a class="solution-card" data-status="<%= sol.status %>" data-category="<%= sol.category.toLowerCase() %>"
+       data-search="<%= (sol.name + ' ' + sol.category + ' ' + sol.description).toLowerCase() %>"
+       href="<%= sol.externalUrl || '/' + sol.id + '/' %>"<% if (sol.externalUrl) { %> target="_blank" rel="noopener"<% } %>>
+      <div class="solution-card-top">
+        <div class="solution-icon"><%- include('partials/icon', { name: sol.icon }) %></div>
+        <span class="status-pill status-pill-<%= sol.status === 'available' ? 'ok' : 'dev' %>">
+          <span class="status-dot"></span><%= sol.status === 'available' ? 'Available' : 'In development' %>
+        </span>
+      </div>
+      <div>
+        <div class="solution-title"><%= sol.name %></div>
+        <div class="solution-category"><%= sol.category %></div>
+      </div>
+      <p class="solution-body"><%= sol.description %></p>
+      <span class="solution-cta">Open project <span class="solution-cta-arrow">→</span></span>
+      <% if (sol.externalUrl) { %><span class="external-badge">Opens in a new tab ↗</span><% } %>
+    </a>
+    <% }) %>
+  </div>
+  <% } %>
+
+  <p id="no-results" class="no-results">No solutions match your search.</p>
+
+  <div class="more-box">
+    <div class="more-box-title">More solutions coming soon</div>
+    <p>The Zawadie Solutions Hub will grow as the team builds and ships new tools.</p>
+  </div>
+
+  <%- include('partials/footer') %>
+
+</main>
+
+<script src="/js/hub.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+<header class="nav">
+  <a class="nav-brand" href="/">
+    <img class="nav-logo" src="/images/zawadie-logo.png" alt="Zawadie" />
+    <span class="nav-brand-text">Zawadie <span class="nav-brand-sub">AI Hub</span></span>
+  </a>
+  <nav class="nav-links">
+    <a href="/" class="nav-link <%= active === 'hub' ? 'is-active' : '' %>">Solutions</a>
+    <% if (user.role === 'admin') { %>
+    <a href="/admin" class="nav-link <%= active === 'admin' ? 'is-active' : '' %>">Admin</a>
+    <% } %>
+  </nav>
+  <div class="nav-user">
+    <span class="nav-user-email"><%= user.email %></span>
+    <div class="avatar"><%= user.email.slice(0, 1).toUpperCase() %></div>
+    <form method="POST" action="/logout">
+      <button class="btn btn-ghost btn-sm" type="submit">Sign out</button>
+    </form>
+  </div>
+</header>

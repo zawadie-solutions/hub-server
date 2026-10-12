@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<%- include('partials/head', { title: 'Sign in — Zawadie AI Hub' }) %>
+</head>
+<body class="login-body">
+
+  <div class="login-shell">
+    <main class="login-form-panel">
+      <div class="login-form-card">
+        <div class="login-brandmark">
+          <img src="/images/zawadie-logo.png" alt="" />
+          <span>Zawadie AI Hub</span>
+        </div>
+        <h2>Sign in</h2>
+        <p class="login-sub">Use your Zawadie Solutions email and password.</p>
+
+        <% if (error) { %>
+        <div class="form-error"><%= error %></div>
+        <% } %>
+
+        <form method="POST" action="/login<%= next ? ('?next=' + encodeURIComponent(next)) : '' %>" class="form" novalidate>
+          <label class="field">
+            <span>Work email</span>
+            <input class="input" type="email" name="email" placeholder="you@zawadie.com" value="<%= emailValue %>" required autofocus />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input class="input" type="password" name="password" required />
+          </label>
+          <button class="btn btn-primary btn-block" type="submit">Sign in</button>
+        </form>
+
+        <p class="login-footnote">Need access? Ask your admin to add your @zawadie.com email to the hub.</p>
+      </div>
+    </main>
+  </div>
+
+</body>
+</html>

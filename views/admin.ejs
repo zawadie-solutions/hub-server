@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<%- include('partials/head', { title: 'Admin — Zawadie AI Hub' }) %>
+</head>
+<body>
+
+<%- include('partials/nav', { user: user, active: 'admin' }) %>
+
+<main class="page">
+
+  <div class="section-header">
+    <h1>Team access</h1>
+    <p>Invite a Zawadie teammate by their @zawadie.com email — they'll get a link to set their own password. Admins get every solution automatically; employees get only what you check below.</p>
+  </div>
+
+  <% if (notice) { %><div class="banner banner-success"><%= notice %></div><% } %>
+  <% if (error) { %><div class="banner banner-error"><%= error %></div><% } %>
+
+  <section class="panel">
+    <h2 class="panel-title">Invite team member</h2>
+    <form method="POST" action="/admin/users" class="form" id="add-form">
+      <div class="form-row">
+        <label class="field">
+          <span>Email</span>
+          <input class="input" type="email" name="email" placeholder="name@zawadie.com" required />
+        </label>
+      </div>
+
+      <div class="field">
+        <span>Role</span>
+        <div class="checkbox-row">
+          <label class="checkbox-pill">
+            <input type="radio" name="role" value="employee" checked />
+            <span>Employee</span>
+          </label>
+          <label class="checkbox-pill">
+            <input type="radio" name="role" value="admin" />
+            <span>Admin</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="field" id="solutions-field">
+        <span>Solutions access</span>
+        <div class="checkbox-row">
+          <% solutions.forEach(function (sol) { %>
+          <label class="checkbox-pill">
+            <input type="checkbox" name="solutions" value="<%= sol.id %>" />
+            <span><%= sol.name %></span>
+          </label>
+          <% }) %>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" type="submit" style="align-self:flex-start">Send invite</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title">All accounts</h2>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Solutions access</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% employees.forEach(function (emp) { %>
+          <tr>
+            <td><%= emp.email %></td>
+            <td><span class="pill pill-<%= emp.role %>"><%= emp.role %></span></td>
+            <td>
+              <% if (emp.passwordHash) { %>
+              <span class="pill pill-employee">Active</span>
+              <% } else { %>
+              <span class="pill pill-muted"><%= inviteExpired(emp) ? 'Invite expired' : 'Invite sent' %></span>
+              <div class="invite-link-row">
+                <input class="input invite-link-input" type="text" readonly value="<%= inviteUrl(emp.inviteToken) %>" onclick="this.select()" />
+                <button type="button" class="btn btn-ghost btn-sm" onclick="copyInviteLink(this)">Copy</button>
+              </div>
+              <form method="POST" action="/admin/users/<%= encodeURIComponent(emp.email) %>/resend-invite" style="margin-top:6px">
+                <button class="btn btn-secondary btn-sm" type="submit">Resend / renew link</button>
+              </form>
+              <% } %>
+            </td>
+            <td>
+              <% if (emp.role === 'admin') { %>
+              <span class="pill pill-muted">All solutions</span>
+              <% } else { %>
+              <form method="POST" action="/admin/users/<%= encodeURIComponent(emp.email) %>/access" class="access-form">
+                <% solutions.forEach(function (sol) { %>
+                <label class="checkbox-pill checkbox-pill-sm">
+                  <input type="checkbox" name="solutions" value="<%= sol.id %>" <%= (emp.solutions || []).includes(sol.id) ? 'checked' : '' %> />
+                  <span><%= sol.name %></span>
+                </label>
+                <% }) %>
+                <button class="btn btn-secondary btn-sm" type="submit">Save</button>
+              </form>
+              <% } %>
+            </td>
+            <td class="table-actions">
+              <% if (emp.email.toLowerCase() !== user.email.toLowerCase()) { %>
+              <form method="POST" action="/admin/users/<%= encodeURIComponent(emp.email) %>/delete"
+                    onsubmit="return confirm('Remove ' + <%- JSON.stringify(emp.email) %> + '? They will lose access immediately.');">
+                <button class="btn btn-ghost btn-sm btn-danger" type="submit">Remove</button>
+              </form>
+              <% } else { %>
+              <span class="text-muted">—</span>
+              <% } %>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <%- include('partials/footer') %>
+
+</main>
+
+<script>
+  document.querySelectorAll('#add-form input[name="role"]').forEach(function (radio) {
+    radio.addEventListener('change', function () {
+      document.getElementById('solutions-field').style.display = this.value === 'admin' ? 'none' : 'flex';
+    });
+  });
+
+  function copyInviteLink(button) {
+    var input = button.previousElementSibling;
+    input.select();
+    navigator.clipboard.writeText(input.value).then(function () {
+      var original = button.textContent;
+      button.textContent = 'Copied!';
+      setTimeout(function () { button.textContent = original; }, 1500);
+    }).catch(function () {});
+  }
+</script>
+
+</body>
+</html>
