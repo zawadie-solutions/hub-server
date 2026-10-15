@@ -1,3 +1,5 @@
 node_modules/
 data/
 _run.log
+.env
+apps/google-review-monitor/config/locations.json

@@ -6,11 +6,15 @@
 // relative-path / base-path aware (see ombeni-ai/public/app.js,
 // Prompt-Engineering/vite.config.ts and Face-match-system's static page) so
 // it works both standalone on its own port and here, behind a path prefix.
+// One .env for the whole app: the hub's own settings plus the built-in
+// solutions' (e.g. Google Review Monitor's DATABASE_URL, ASANA_TOKEN).
+require('dotenv').config();
+
 const path = require('node:path');
 const crypto = require('node:crypto');
 const express = require('express');
 const session = require('express-session');
-const { createProxyMiddleware } = require('http-proxy-middleware');
+const { createProxyMiddleware, fixRequestBody } = require('http-proxy-middleware');
 
 const SOLUTIONS = require('./solutions');
 const users = require('./store/users');
@@ -241,7 +245,7 @@ app.post('/admin/users/:email/delete', requireLogin, requireAdmin, (req, res) =>
 // ---------------- solution proxies ----------------
 
 for (const sol of SOLUTIONS) {
-  if (sol.externalUrl) continue; // links straight out; nothing to proxy
+  if (sol.externalUrl || sol.load) continue; // links straight out / built in; nothing to proxy
   const prefix = `/${sol.id}`;
 
   app.get(prefix, requireSolutionAccess(sol.id), (req, res) => res.redirect(301, `${prefix}/`));
@@ -270,6 +274,19 @@ for (const sol of SOLUTIONS) {
           });
         },
         proxyReq: (proxyReq, req) => {
+          // changeOrigin rewrites Host to the backend's, so a backend that
+          // checks Origin against Host (CSRF guard) would refuse every
+          // same-site POST. Only a request already coming from the hub's
+          // own origin is re-labelled as coming from the backend's.
+          const origin = req.headers.origin;
+          if (origin) {
+            try {
+              if (new URL(origin).host === req.headers.host) proxyReq.setHeader('Origin', new URL(sol.target).origin);
+            } catch {
+              // malformed Origin: forward it untouched and let the backend decide
+            }
+          }
+
           // Lets the solution trust the hub's already-completed login
           // instead of showing its own, so there's only ever one sign-in.
           const identity = signHubIdentity(req.session.user);
@@ -282,15 +299,45 @@ for (const sol of SOLUTIONS) {
             const token = Buffer.from(`${sol.basicAuth.user}:${sol.basicAuth.pass}`).toString('base64');
             proxyReq.setHeader('Authorization', `Basic ${token}`);
           }
+
+          // The hub's express.urlencoded() already consumed form bodies
+          // (e.g. a solution's own "Log out" form); re-send them upstream.
+          // Must run last: writing the body flushes the headers.
+          fixRequestBody(proxyReq, req);
         },
       },
     })
   );
 }
 
-app.use((req, res) => {
+// ---------------- built-in solutions ----------------
+
+// Solutions whose code lives in this repo (apps/) run in the hub's own
+// process, behind the hub's login. One that fails to start (e.g. its
+// database is unreachable) shows an error page instead of taking the
+// whole hub down.
+async function mountBuiltInSolutions() {
+  for (const sol of SOLUTIONS) {
+    if (!sol.load) continue;
+    const prefix = `/${sol.id}`;
+    let handler;
+    try {
+      const { createSolution } = await sol.load();
+      handler = await createSolution({ userOf: (req) => req.session.user?.email ?? null, signOutPath: '/logout' });
+      console.log(`[built-in] ${sol.id} ready`);
+    } catch (err) {
+      console.error(`[built-in] ${sol.id} failed to start:`, err.message);
+      handler = (req, res) =>
+        res.status(503).render('error', { user: req.session.user || null, code: 503, message: `${sol.name} isn't available right now.` });
+    }
+    app.get(prefix, requireSolutionAccess(sol.id), (req, res) => res.redirect(301, `${prefix}/`));
+    app.use(prefix, requireSolutionAccess(sol.id), handler);
+  }
+}
+
+function notFound(req, res) {
   res.status(404).render('error', { user: req.session.user || null, code: 404, message: "We couldn't find that page." });
-});
+}
 
 // ---------------- boot ----------------
 
@@ -301,7 +348,7 @@ function start(port) {
   const server = app.listen(port, () => {
     console.log(`Zawadie Solutions Hub listening on http://ai.zawadie.com${port === 80 ? '' : ':' + port}`);
     console.log('Routes:');
-    for (const sol of SOLUTIONS) console.log(`  /${sol.id}/*  ->  ${sol.externalUrl || sol.target}`);
+    for (const sol of SOLUTIONS) console.log(`  /${sol.id}/*  ->  ${sol.externalUrl || sol.target || 'built in'}`);
   });
   server.on('error', (err) => {
     if (err.code === 'EACCES' && port !== FALLBACK_PORT) {
@@ -316,4 +363,7 @@ function start(port) {
   });
 }
 
-start(DEFAULT_PORT);
+mountBuiltInSolutions().then(() => {
+  app.use(notFound); // last, so it can't shadow the built-in solutions' routes
+  start(DEFAULT_PORT);
+});
