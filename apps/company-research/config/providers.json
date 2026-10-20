@@ -1,0 +1,21 @@
+{
+  "default_provider": "serpapi",
+  "secondary_provider": null,
+  "providers": {
+    "google": {
+      "enabled": true
+    },
+    "bing": {
+      "enabled": false
+    },
+    "serpapi": {
+      "enabled": true
+    },
+    "brave": {
+      "enabled": false
+    },
+    "mock": {
+      "enabled": true
+    }
+  }
+}

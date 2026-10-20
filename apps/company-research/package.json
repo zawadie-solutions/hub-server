@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "Company Research (lead enrichment), run inside the hub (see src/hub.ts). Dependencies live in hub-server/package.json."
+}

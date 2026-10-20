@@ -7,7 +7,9 @@
   "scripts": {
     "start": "tsx server.js",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p apps/google-review-monitor",
+    "typecheck": "tsc --noEmit -p apps/google-review-monitor && tsc --noEmit -p apps/company-research",
+    "company-research:import-python": "tsx apps/company-research/scripts/importFromPython.ts",
+    "company-research:build-ui": "npm --prefix apps/company-research/frontend install && npm --prefix apps/company-research/frontend run build",
     "monitor:migrate": "tsx apps/google-review-monitor/src/cli/migrate.ts",
     "monitor:discover": "tsx apps/google-review-monitor/src/cli/discover.ts",
     "monitor:check-month": "tsx apps/google-review-monitor/src/cli/checkMonth.ts",
@@ -18,17 +20,22 @@
   "dependencies": {
     "dotenv": "^16.4.5",
     "ejs": "^3.1.10",
+    "exceljs": "^4.4.0",
     "express": "^4.22.3",
     "express-session": "^1.18.1",
+    "htmlparser2": "^9.1.0",
     "http-proxy-middleware": "^3.0.3",
+    "multer": "^2.4.0",
     "mysql2": "^3.24.5",
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.14",
     "pino": "^9.3.2",
-    "tsx": "^4.17.0"
+    "tsx": "^4.17.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/express": "^4.17.25",
+    "@types/multer": "^2.3.0",
     "@types/node": "^22.5.0",
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^6.4.15",

@@ -51,6 +51,18 @@ module.exports = [
     icon: 'star',
   },
   {
+    id: 'company-research',
+    name: 'Company Research',
+    category: 'Sales & Leads',
+    description:
+      'Turns a list of company names into evidence-backed lead records — website, owner, phone and email — plus domain search, email finder and verification, with Excel export.',
+    status: 'available',
+    // Built in: the Node port of the original Python app, running inside the
+    // hub's own process (apps/company-research) with its data in MySQL.
+    load: () => import('./apps/company-research/src/hub.ts'),
+    icon: 'search',
+  },
+  {
     id: 'bam-comment-review',
     name: 'BAM Comment Review',
     category: 'Social Media',
