@@ -1,0 +1,73 @@
+@import 'tailwindcss';
+
+@theme {
+  /* Same design tokens as Ombeni AI (ombeni-ai/public/style.css), so this
+     app reads as the same product as the hub and every other solution. */
+  --font-display: 'Plus Jakarta Sans', sans-serif;
+  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+  --color-border-input: #cbd5e1;
+  --color-track: #f1f5f9;
+  --color-text: #1e293b;
+  --color-text-soft: #64748b;
+  --color-text-softer: #94a3b8;
+  --color-heading: #1e293b;
+
+  --color-accent: #e51a5a;
+  --color-accent-soft: #fdecf1;
+  --color-accent-hover: #c8134c;
+
+  --color-success: #1db881;
+  --color-success-soft: #d1fae5;
+  --color-warn: #ebb019;
+  --color-warn-soft: #fef3c7;
+  --color-danger: #e51a5a;
+  --color-danger-soft: #fdecf1;
+
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-panel: 16px;
+  --radius-pill: 100px;
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4 {
+    color: var(--color-heading);
+    font-family: var(--font-display);
+    font-weight: 700;
+  }
+
+  a {
+    color: var(--color-accent);
+  }
+  a:hover {
+    color: var(--color-accent-hover);
+  }
+
+  textarea:focus, input:focus {
+    outline: 2px solid var(--color-success);
+    outline-offset: 1px;
+  }
+
+  ::selection {
+    background: var(--color-accent-soft);
+    color: var(--color-accent-hover);
+  }
+}

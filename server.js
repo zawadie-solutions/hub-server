@@ -316,6 +316,13 @@ for (const sol of SOLUTIONS) {
 // process, behind the hub's login. One that fails to start (e.g. its
 // database is unreachable) shows an error page instead of taking the
 // whole hub down.
+// Built-in solutions run in this process, so instead of signed headers they
+// get the already-checked user as a request property no client can set.
+function handOverUser(req, res, next) {
+  req.hubUser = { email: req.session.user.email, role: req.session.user.role };
+  next();
+}
+
 async function mountBuiltInSolutions() {
   for (const sol of SOLUTIONS) {
     if (!sol.load) continue;
@@ -331,7 +338,7 @@ async function mountBuiltInSolutions() {
         res.status(503).render('error', { user: req.session.user || null, code: 503, message: `${sol.name} isn't available right now.` });
     }
     app.get(prefix, requireSolutionAccess(sol.id), (req, res) => res.redirect(301, `${prefix}/`));
-    app.use(prefix, requireSolutionAccess(sol.id), handler);
+    app.use(prefix, requireSolutionAccess(sol.id), handOverUser, handler);
   }
 }
 

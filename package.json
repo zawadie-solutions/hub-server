@@ -18,17 +18,22 @@
     "monitor:poc": "tsx apps/google-review-monitor/src/cli/poc.ts"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.2.0",
     "dotenv": "^16.4.5",
     "ejs": "^3.1.10",
     "exceljs": "^4.4.0",
     "express": "^4.22.3",
     "express-session": "^1.18.1",
+    "google-auth-library": "^11.3.1",
     "htmlparser2": "^9.1.0",
     "http-proxy-middleware": "^3.0.3",
+    "mammoth": "^1.13.0",
     "multer": "^2.4.0",
     "mysql2": "^3.24.5",
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.14",
+    "openai": "^4.104.0",
+    "pdf-parse": "^1.1.4",
     "pino": "^9.3.2",
     "tsx": "^4.17.0",
     "zod": "^3.25.76"

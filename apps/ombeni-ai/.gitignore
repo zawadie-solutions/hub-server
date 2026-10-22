@@ -1,0 +1,7 @@
+node_modules/
+.env
+_run.log
+
+# Keeps a growing log of every action item already pushed to Monday.com —
+# runtime cache, not configuration, so it'd just be commit noise.
+data/synced-action-items.json

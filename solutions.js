@@ -12,10 +12,9 @@ module.exports = [
     description:
       "Zawadie's standalone AI employee — a company assistant that answers questions and gets work done by plugging into calendar, Slack, and Monday.com.",
     status: 'available',
-    // Its own Hostinger Node.js Web App (ombeni.zawadie.com) in production;
-    // falls back to the locally-running instance for dev.
-    target: process.env.OMBENI_AI_URL || 'http://localhost:3000',
-    stripPrefix: true,
+    // Built in: runs inside the hub's own process (apps/ombeni-ai). Its
+    // settings are the OMBENI_-prefixed ones in the hub's .env.
+    load: () => import('./apps/ombeni-ai/hub.js'),
     icon: 'bot',
   },
   {
@@ -25,11 +24,9 @@ module.exports = [
     description:
       'Zawadie PromptClass — internal prompt-engineering training for Zawadie Solutions agents, with lessons, exams, progress tracking, and a leaderboard.',
     status: 'available',
-    // Stays on Vercel (serverless API + Postgres) — the hub just proxies the
-    // /prompt-engineering/ path to its Vercel production URL instead of a
-    // local port. Set PROMPT_ENGINEERING_URL to that URL in production.
-    target: process.env.PROMPT_ENGINEERING_URL || 'http://localhost:5173',
-    stripPrefix: false,
+    // Built in: runs inside the hub's own process (apps/prompt-engineering);
+    // its data stays in Neon Postgres (PROMPT_ENGINEERING_DATABASE_URL).
+    load: () => import('./apps/prompt-engineering/hub.ts'),
     icon: 'cap',
   },
   // Face-match-system is intentionally absent — it's a Python/FastAPI
