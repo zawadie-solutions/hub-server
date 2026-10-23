@@ -24,9 +24,9 @@ module.exports = [
     description:
       'Zawadie PromptClass — internal prompt-engineering training for Zawadie Solutions agents, with lessons, exams, progress tracking, and a leaderboard.',
     status: 'available',
-    // Built in: runs inside the hub's own process (apps/prompt-engineering);
-    // its data stays in Neon Postgres (PROMPT_ENGINEERING_DATABASE_URL).
-    load: () => import('./apps/prompt-engineering/hub.ts'),
+    // Hosted separately on Vercel while it's being rebuilt here, so the hub
+    // just links out to it instead of running the in-progress built-in version.
+    externalUrl: 'https://promtkit.vercel.app/',
     icon: 'cap',
   },
   // Face-match-system is intentionally absent — it's a Python/FastAPI

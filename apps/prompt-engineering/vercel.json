@@ -1,10 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/prompt-engineering/api/:path*", "destination": "/api/:path*" },
-    { "source": "/prompt-engineering/assets/:path*", "destination": "/assets/:path*" },
-    { "source": "/prompt-engineering/favicon.png", "destination": "/favicon.png" },
-    { "source": "/prompt-engineering/icons.svg", "destination": "/icons.svg" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

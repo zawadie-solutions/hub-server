@@ -18,8 +18,7 @@ export interface LeaderboardEntry {
   points: number
 }
 
-// BASE_URL carries whatever `base` vite.config.ts is configured with
-// ('/prompt-engineering/' behind the hub, '/' when run standalone).
+// BASE_URL carries whatever `base` vite.config.ts is configured with.
 const API_ROOT = `${import.meta.env.BASE_URL}api`.replace(/\/+/g, '/')
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
