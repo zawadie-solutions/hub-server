@@ -23,12 +23,13 @@ export interface RuntimeSettings {
   dailyCheckEnabled: boolean;
 }
 
-export const SOURCES = ["dataforseo", "apify", "places", "business-profile"] as const;
+export const SOURCES = ["dataforseo", "apify", "places", "business-profile", "scrape"] as const;
 export const SOURCE_LABELS: Record<string, string> = {
   dataforseo: "DataForSEO",
   apify: "Apify",
   places: "Google Places API",
   "business-profile": "Google Business Profile API",
+  scrape: "Scrape mode (reads each review link in a browser; testing)",
 };
 
 /** Used until someone changes it on the dashboard. Not read from .env. */

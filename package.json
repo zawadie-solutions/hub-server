@@ -15,7 +15,8 @@
     "monitor:check-month": "tsx apps/google-review-monitor/src/cli/checkMonth.ts",
     "monitor:run-once": "tsx apps/google-review-monitor/src/cli/runOnce.ts",
     "monitor:preview": "tsx apps/google-review-monitor/src/cli/preview.ts",
-    "monitor:poc": "tsx apps/google-review-monitor/src/cli/poc.ts"
+    "monitor:poc": "tsx apps/google-review-monitor/src/cli/poc.ts",
+    "monitor:scrape-check": "tsx apps/google-review-monitor/src/cli/scrapeCheck.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
@@ -36,6 +37,7 @@
     "openai": "^4.104.0",
     "pdf-parse": "^1.1.4",
     "pino": "^9.3.2",
+    "puppeteer-core": "^23.11.1",
     "sharp": "^0.35.5",
     "tsx": "^4.17.0",
     "yauzl": "^3.4.0",

@@ -8,6 +8,7 @@ import { BusinessProfileChecker, loadLocationMap, OAuthRefreshTokenProvider } fr
 import { DataForSeoChecker } from "./google/dataForSeoChecker";
 import { FallbackChecker } from "./google/fallbackChecker";
 import { PlacesChecker } from "./google/placesChecker";
+import { ScrapeChecker } from "./google/scrapeChecker";
 import type { CycleDeps } from "./monitor/cycle";
 import { EmailNotifier } from "./notify/email";
 import { SlackDmNotifier } from "./notify/slack";
@@ -23,6 +24,7 @@ export interface CheckerOptions {
 
 function checkerNamed(name: string, setting: string, opts: CheckerOptions): ReviewChecker {
   if (name === "places") return new PlacesChecker(config.places());
+  if (name === "scrape") return new ScrapeChecker(config.scrape());
   if (name === "apify") return new ApifyChecker({ ...config.apify(), maxReviews: opts.maxReviews ?? settings.reviewsPerLocation });
   if (name === "dataforseo") {
     return new DataForSeoChecker({ ...config.dataforseo(), maxReviews: opts.maxReviews ?? settings.reviewsPerLocation, priority: settings.dataforseoPriority || !!opts.fast });

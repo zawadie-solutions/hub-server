@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { findBrowser } from "./google/scrapeChecker";
 
 const env = process.env;
 
@@ -74,6 +75,12 @@ export const config = {
       .map((s) => s.trim())
       .filter(Boolean),
   }),
+  /** Scrape mode: a locally installed Chrome/Edge, or the one SCRAPE_BROWSER_PATH points to. */
+  scrape: () => {
+    const browserPath = findBrowser(env.SCRAPE_BROWSER_PATH);
+    if (!browserPath) throw new Error("No Chrome or Edge found for scrape mode; set SCRAPE_BROWSER_PATH");
+    return { browserPath };
+  },
   /** Slack DM is used instead of email when a bot token is configured. */
   slackEnabled: Boolean(env.SLACK_BOT_TOKEN),
   slack: () => ({
