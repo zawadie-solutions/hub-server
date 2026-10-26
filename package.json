@@ -32,10 +32,13 @@
     "mysql2": "^3.24.5",
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.14",
+    "onnxruntime-node": "^1.30.0",
     "openai": "^4.104.0",
     "pdf-parse": "^1.1.4",
     "pino": "^9.3.2",
+    "sharp": "^0.35.5",
     "tsx": "^4.17.0",
+    "yauzl": "^3.4.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

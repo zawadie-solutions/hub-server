@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "commonjs",
+  "description": "Face Match (face verification), run inside the hub (see src/hub.js). Dependencies live in hub-server/package.json."
+}

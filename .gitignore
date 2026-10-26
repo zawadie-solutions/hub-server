@@ -3,3 +3,6 @@ node_modules/
 _run.log
 .env
 apps/google-review-monitor/config/locations.json
+# Face Match: downloaded model files and request logs stay local
+apps/face-match/models/
+apps/face-match/logs/

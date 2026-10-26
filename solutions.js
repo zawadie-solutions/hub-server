@@ -29,10 +29,18 @@ module.exports = [
     externalUrl: 'https://promtkit.vercel.app/',
     icon: 'cap',
   },
-  // Face-match-system is intentionally absent — it's a Python/FastAPI
-  // (uvicorn) service, and Hostinger's Unlimited plan only runs Node.js Web
-  // Apps, not arbitrary Python processes. Revisit once it has a host that
-  // can run it (e.g. a VPS).
+  {
+    id: 'face-match',
+    name: 'Face Match',
+    category: 'Verification',
+    description:
+      'Compares a reference photo with one or more newer photos of a person and says whether they are the same person, even across years of ageing. Photos are checked in memory and never stored.',
+    status: 'available',
+    // Built in: the Node port of the original Python/FastAPI app (apps/face-match), running inside
+    // the hub's own process. The face models load on first use, not at hub start.
+    load: () => import('./apps/face-match/src/hub.js'),
+    icon: 'scan',
+  },
   {
     id: 'google-review-monitor',
     name: 'Google Review Monitor',
