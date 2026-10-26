@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { findBrowser } from "./google/scrapeChecker";
+import { findBrowser, type ScrapeOptions } from "./google/scrapeChecker";
 
 const env = process.env;
 
@@ -75,11 +75,17 @@ export const config = {
       .map((s) => s.trim())
       .filter(Boolean),
   }),
-  /** Scrape mode: a locally installed Chrome/Edge, or the one SCRAPE_BROWSER_PATH points to. */
-  scrape: () => {
+  /**
+   * Scrape mode: the scraper API on Vercel when SCRAPE_API_URL + SCRAPE_API_SECRET are set (for
+   * hosting that can't run Chrome), otherwise a locally installed Chrome/Edge (or SCRAPE_BROWSER_PATH).
+   */
+  scrape: (): ScrapeOptions => {
+    if (env.SCRAPE_API_URL || env.SCRAPE_API_SECRET) {
+      return { mode: "remote", apiUrl: required("SCRAPE_API_URL"), secret: required("SCRAPE_API_SECRET") };
+    }
     const browserPath = findBrowser(env.SCRAPE_BROWSER_PATH);
-    if (!browserPath) throw new Error("No Chrome or Edge found for scrape mode; set SCRAPE_BROWSER_PATH");
-    return { browserPath };
+    if (!browserPath) throw new Error("No Chrome or Edge found for scrape mode; set SCRAPE_API_URL + SCRAPE_API_SECRET, or SCRAPE_BROWSER_PATH");
+    return { mode: "local", browserPath };
   },
   /** Slack DM is used instead of email when a bot token is configured. */
   slackEnabled: Boolean(env.SLACK_BOT_TOKEN),

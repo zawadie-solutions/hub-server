@@ -94,25 +94,43 @@ function release(): void {
   idleTimer.unref();
 }
 
+/**
+ * Where the page is rendered: a browser on this machine, or the scraper API on Vercel
+ * (scraper-api/), for hosting that can't run Chrome. Either way the verdict is decided here.
+ */
+export type ScrapeOptions =
+  | { mode: "local"; browserPath: string; timeoutMs?: number }
+  | { mode: "remote"; apiUrl: string; secret: string; timeoutMs?: number; fetchImpl?: typeof fetch };
+
+type PageRead = { text: string } | { failed: string };
+
 export class ScrapeChecker implements ReviewChecker {
-  constructor(private opts: { browserPath: string; timeoutMs?: number }) {}
+  constructor(private opts: ScrapeOptions) {}
 
   async checkReview(review: ReviewToCheck): Promise<CheckResult> {
-    const timeoutMs = this.opts.timeoutMs ?? 45_000;
+    const read = this.opts.mode === "remote" ? await this.readRemote(review.googleReviewUrl, this.opts) : await this.readLocal(review.googleReviewUrl, this.opts);
+    if ("failed" in read) return { status: "UNKNOWN", reason: `${SOURCE_FAILED} ${read.failed}` };
+    const result = classifyPage(read.text, review.reviewerName);
+    logger.info({ reviewId: review.id, status: result.status, mode: this.opts.mode }, "scrape check");
+    return result;
+  }
+
+  /** Renders the page in a browser on this machine. */
+  private async readLocal(url: string, opts: Extract<ScrapeOptions, { mode: "local" }>): Promise<PageRead> {
     let browser: Browser;
     try {
-      browser = await acquire(this.opts.browserPath);
+      browser = await acquire(opts.browserPath);
     } catch (e) {
-      return { status: "UNKNOWN", reason: `${SOURCE_FAILED} could not start the browser (${(e as Error).message})` };
+      return { failed: `could not start the browser (${(e as Error).message})` };
     }
     const page = await browser.newPage().catch(() => null);
     if (!page) {
       release();
-      return { status: "UNKNOWN", reason: `${SOURCE_FAILED} could not open a browser tab` };
+      return { failed: "could not open a browser tab" };
     }
     try {
       await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
-      await page.goto(withEnglish(review.googleReviewUrl), { waitUntil: "networkidle2", timeout: timeoutMs });
+      await page.goto(withEnglish(url), { waitUntil: "networkidle2", timeout: opts.timeoutMs ?? 45_000 });
       // The review (or the removal message) is drawn after the network settles; give it a moment.
       await page
         .waitForFunction((removed) => {
@@ -120,16 +138,35 @@ export class ScrapeChecker implements ReviewChecker {
           return t.includes(removed) || / ago\b/.test(t);
         }, { timeout: 10_000 }, REMOVED_TEXT)
         .catch(() => undefined);
-      const text = await page.evaluate(() => document.body?.innerText ?? "");
-      const result = classifyPage(text, review.reviewerName);
-      logger.info({ reviewId: review.id, status: result.status }, "scrape check");
-      return result;
+      return { text: await page.evaluate(() => document.body?.innerText ?? "") };
     } catch (e) {
-      return { status: "UNKNOWN", reason: `${SOURCE_FAILED} the review page did not load (${(e as Error).message})` };
+      return { failed: `the review page did not load (${(e as Error).message})` };
     } finally {
       await page.close().catch(() => undefined);
       release();
     }
+  }
+
+  /** Asks the scraper API (scraper-api/, on Vercel) to render the page and return its text. */
+  private async readRemote(url: string, opts: Extract<ScrapeOptions, { mode: "remote" }>): Promise<PageRead> {
+    const fetchImpl = opts.fetchImpl ?? fetch;
+    let res: Response;
+    try {
+      res = await fetchImpl(opts.apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${opts.secret}` },
+        body: JSON.stringify({ url: withEnglish(url) }),
+        // A cold start launches Chrome first, so allow for that on top of the page itself.
+        signal: AbortSignal.timeout(opts.timeoutMs ?? 75_000),
+      });
+    } catch (e) {
+      const err = e as Error;
+      return { failed: err.name === "TimeoutError" ? "the scraper API did not answer in time" : `could not reach the scraper API (${err.message})` };
+    }
+    const body = (await res.json().catch(() => null)) as { text?: unknown; error?: unknown } | null;
+    if (!res.ok) return { failed: `the scraper API answered HTTP ${res.status}${typeof body?.error === "string" ? ` (${body.error})` : ""}` };
+    if (typeof body?.text !== "string") return { failed: "the scraper API's answer had no page text" };
+    return { text: body.text };
   }
 }
 

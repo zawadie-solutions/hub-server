@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyPage } from "../src/google/scrapeChecker";
+import { classifyPage, ScrapeChecker } from "../src/google/scrapeChecker";
 
 // What headless Chrome's document.body.innerText looked like for a real, existing review.
 const EXISTING = `Search Google Maps
@@ -61,5 +61,67 @@ Response from the owner 8 years ago`;
   it("never guesses on an empty or unclear page", () => {
     expect(classifyPage("", "Stephanie Rivera").status).toBe("UNKNOWN");
     expect(classifyPage("Search Google Maps\nSign in", null).status).toBe("UNKNOWN");
+  });
+});
+
+// ------------------------------------------------------------------ scraper API (remote) mode
+const review = { id: 1, googleReviewUrl: "https://maps.app.goo.gl/abc", location: null, reviewerName: "Stephanie Rivera", rating: null };
+
+function fakeApi(respond: (init: RequestInit) => Response | Promise<Response>) {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const fetchImpl = (async (url: string, init: RequestInit) => {
+    calls.push({ url, init });
+    return respond(init);
+  }) as unknown as typeof fetch;
+  return { calls, fetchImpl };
+}
+
+const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+const remote = (fetchImpl: typeof fetch, timeoutMs?: number) =>
+  new ScrapeChecker({ mode: "remote", apiUrl: "https://scraper.example/api/render", secret: "s3cret", fetchImpl, timeoutMs });
+
+describe("scrape mode via the scraper API", () => {
+  it("sends the link with the secret and classifies the returned page", async () => {
+    const api = fakeApi(() => json(200, { finalUrl: "https://www.google.com/maps/reviews/x", text: REMOVED }));
+    expect(await remote(api.fetchImpl).checkReview(review)).toEqual({ status: "REVIEW_REMOVED" });
+    expect(api.calls[0].url).toBe("https://scraper.example/api/render");
+    expect((api.calls[0].init.headers as Record<string, string>).Authorization).toBe("Bearer s3cret");
+    expect(JSON.parse(api.calls[0].init.body as string)).toEqual({ url: "https://maps.app.goo.gl/abc" });
+  });
+
+  it("sees an existing review", async () => {
+    const api = fakeApi(() => json(200, { finalUrl: "x", text: EXISTING }));
+    expect(await remote(api.fetchImpl).checkReview(review)).toEqual({ status: "REVIEW_EXISTS" });
+  });
+
+  it.each([
+    [401, { error: "Not authorized" }],
+    [502, { error: "Could not render the page: timeout" }],
+    [500, "not json"],
+  ])("turns HTTP %i into a failed-source UNKNOWN", async (status, body) => {
+    const api = fakeApi(() => (typeof body === "string" ? new Response(body, { status }) : json(status, body)));
+    const result = await remote(api.fetchImpl).checkReview(review);
+    expect(result.status).toBe("UNKNOWN");
+    expect(result.status === "UNKNOWN" && result.reason.startsWith("google check failed:")).toBe(true);
+    expect(result.status === "UNKNOWN" && result.reason).toContain(`HTTP ${status}`);
+  });
+
+  it("turns an unreachable API into a failed-source UNKNOWN", async () => {
+    const api = fakeApi(() => {
+      throw new TypeError("fetch failed");
+    });
+    const result = await remote(api.fetchImpl).checkReview(review);
+    expect(result.status === "UNKNOWN" && result.reason).toMatch(/^google check failed: could not reach the scraper API/);
+  });
+
+  it("gives up on an API that does not answer in time", async () => {
+    const api = fakeApi((init) => new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(init.signal!.reason))));
+    const result = await remote(api.fetchImpl, 50).checkReview(review);
+    expect(result.status === "UNKNOWN" && result.reason).toBe("google check failed: the scraper API did not answer in time");
+  });
+
+  it("refuses an answer without page text", async () => {
+    const api = fakeApi(() => json(200, { finalUrl: "x" }));
+    expect((await remote(api.fetchImpl).checkReview(review)).status).toBe("UNKNOWN");
   });
 });

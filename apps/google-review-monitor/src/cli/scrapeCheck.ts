@@ -1,5 +1,6 @@
 // Tries scrape mode on review links without touching the database:
 //   npm run monitor:scrape-check -- <review link> [<review link> ...] [--reviewer "Jane Doe"]
+// Uses the scraper API when SCRAPE_API_URL + SCRAPE_API_SECRET are set, else local Chrome.
 import { config } from "../config";
 import { ScrapeChecker } from "../google/scrapeChecker";
 
@@ -12,7 +13,9 @@ if (!urls.length) {
   process.exit(1);
 }
 
-const checker = new ScrapeChecker(config.scrape());
+const opts = config.scrape();
+console.log(`Scrape mode: ${opts.mode === "remote" ? `scraper API (${new URL(opts.apiUrl).host})` : `local browser (${opts.browserPath})`}`);
+const checker = new ScrapeChecker(opts);
 for (const [i, url] of urls.entries()) {
   const started = Date.now();
   const result = await checker.checkReview({ id: -(i + 1), googleReviewUrl: url, location: null, reviewerName, rating: null });

@@ -16,7 +16,8 @@
     "monitor:run-once": "tsx apps/google-review-monitor/src/cli/runOnce.ts",
     "monitor:preview": "tsx apps/google-review-monitor/src/cli/preview.ts",
     "monitor:poc": "tsx apps/google-review-monitor/src/cli/poc.ts",
-    "monitor:scrape-check": "tsx apps/google-review-monitor/src/cli/scrapeCheck.ts"
+    "monitor:scrape-check": "tsx apps/google-review-monitor/src/cli/scrapeCheck.ts",
+    "monitor:scrape-pilot": "tsx apps/google-review-monitor/src/cli/scrapePilot.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
