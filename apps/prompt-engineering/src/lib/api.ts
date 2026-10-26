@@ -1,3 +1,10 @@
+// Absolute, since this page is also served standalone on promtkit.vercel.app
+// (see vite.config.ts) where a relative "/" link would just reload itself
+// instead of reaching the real Hub. Override with VITE_HUB_URL in a local,
+// gitignored .env.local while testing against a hub running on localhost —
+// the production default below is untouched by that override.
+export const HUB_URL = import.meta.env.VITE_HUB_URL || 'https://ai.zawadie.com/'
+
 export interface AuthUser {
   id: number
   email: string

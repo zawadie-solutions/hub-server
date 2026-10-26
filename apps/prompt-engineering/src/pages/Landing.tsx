@@ -3,6 +3,7 @@ import { MODULES, totalLessonCount } from '../data/modules'
 import { moduleItems } from '../lib/moduleProgress'
 import { Button } from '../components/Button'
 import { useAuth } from '../store/auth'
+import { HUB_URL } from '../lib/api'
 
 const FEATURES = [
   {
@@ -56,7 +57,7 @@ export function Landing() {
                   <Button className="px-6 py-3.5 text-base">Go to your dashboard</Button>
                 </Link>
               ) : (
-                <a href="/">
+                <a href={HUB_URL}>
                   <Button className="px-6 py-3.5 text-base">Go to the Zawadie Hub</Button>
                 </a>
               )}
