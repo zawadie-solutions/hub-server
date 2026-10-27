@@ -78,7 +78,7 @@ function fakeApi(respond: (init: RequestInit) => Response | Promise<Response>) {
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 const remote = (fetchImpl: typeof fetch, timeoutMs?: number) =>
-  new ScrapeChecker({ mode: "remote", apiUrl: "https://scraper.example/api/render", secret: "s3cret", fetchImpl, timeoutMs });
+  new ScrapeChecker({ apiUrl: "https://scraper.example/api/render", secret: "s3cret", fetchImpl, timeoutMs });
 
 describe("scrape mode via the scraper API", () => {
   it("sends the link with the secret and classifies the returned page", async () => {

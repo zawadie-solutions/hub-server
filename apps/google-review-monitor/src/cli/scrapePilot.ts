@@ -15,7 +15,7 @@ const { rows } = await db.query<{ id: number; google_review_url: string; reviewe
 await db.end();
 
 const opts = config.scrape();
-console.log(`Scrape pilot: ${rows.length} reviews via ${opts.mode === "remote" ? `the scraper API (${new URL(opts.apiUrl).host})` : "local Chrome"}\n`);
+console.log(`Scrape pilot: ${rows.length} reviews via the scraper API (${new URL(opts.apiUrl).host})\n`);
 const checker = new ScrapeChecker(opts);
 const tally = { REVIEW_EXISTS: 0, REVIEW_REMOVED: 0, UNKNOWN: 0 };
 const reasons = new Map<string, number>();
