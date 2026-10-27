@@ -96,7 +96,11 @@ function release(): void {
 
 /**
  * Where the page is rendered: a browser on this machine, or the scraper API on Vercel
- * (scraper-api/), for hosting that can't run Chrome. Either way the verdict is decided here.
+ * (a separate project), for hosting that can't run Chrome. Either way the verdict is decided here.
+ *
+ * The API's contract: POST {SCRAPE_API_URL} with `Authorization: Bearer {SCRAPE_API_SECRET}` and
+ * body {"url": "<review link>"} -> 200 {"finalUrl", "text"} (the page's visible text), or a non-2xx
+ * {"error"} (401 bad secret, 400 not a review link, 502 could not render).
  */
 export type ScrapeOptions =
   | { mode: "local"; browserPath: string; timeoutMs?: number }
@@ -147,7 +151,7 @@ export class ScrapeChecker implements ReviewChecker {
     }
   }
 
-  /** Asks the scraper API (scraper-api/, on Vercel) to render the page and return its text. */
+  /** Asks the scraper API (its own project, on Vercel) to render the page and return its text. */
   private async readRemote(url: string, opts: Extract<ScrapeOptions, { mode: "remote" }>): Promise<PageRead> {
     const fetchImpl = opts.fetchImpl ?? fetch;
     let res: Response;
