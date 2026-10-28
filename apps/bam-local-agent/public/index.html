@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>BAM Local Agent Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css?v=7">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <header class="topbar">
+    <div class="topbar__inner">
+      <div class="brand">
+        <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <rect x="3" y="12" width="26" height="16" rx="3" fill="currentColor"/>
+          <circle cx="11" cy="8.5" r="3.5" fill="currentColor"/><circle cx="21" cy="8.5" r="3.5" fill="currentColor"/>
+        </svg>
+        <span class="brand__name">BAM Local Agent <span class="brand__sub">Admin</span></span>
+      </div>
+      <div class="topbar__status">
+        <span class="pill pill--muted" id="activePill" role="status">Active playbook: …</span>
+        <span class="health" id="health" role="status"><span class="dot dot--muted" aria-hidden="true"></span><span id="healthText">Checking…</span></span>
+        <a class="btn btn--ghost btn--sm" href="ask">Open marketing planner</a>
+        <span class="pill pill--muted" id="who" hidden></span>
+        <button type="button" class="btn btn--ghost btn--sm" id="signOut" hidden>Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="layout">
+    <!-- LEFT: quarterly playbook -->
+    <section class="card" aria-labelledby="pbTitle">
+      <div class="card__head">
+        <h2 id="pbTitle">Quarterly playbook</h2>
+        <p class="muted">Upload the new BAM Marketing Playbook. It is read, split into searchable pieces, embedded with OpenAI, and made active for all stores.</p>
+      </div>
+
+      <form id="uploadForm" novalidate>
+        <label class="dropzone" id="dropzone" for="fileInput">
+          <input class="sr-only" type="file" id="fileInput" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" aria-describedby="fileHelp fileError">
+          <svg class="dropzone__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 16V4m0 0L7 9m5-5 5 5M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="dropzone__title"><strong>Drag &amp; drop</strong> the playbook here, or <span class="link">browse</span></span>
+          <span class="dropzone__hint" id="fileHelp">PDF, TXT or Markdown, up to 15 MB</span>
+        </label>
+        <div class="file-chip" id="fileChip" hidden>
+          <span class="file-chip__name" id="fileName"></span>
+          <span class="file-chip__size muted" id="fileSize"></span>
+          <button type="button" class="icon-btn" id="fileRemove" aria-label="Remove selected file">&times;</button>
+        </div>
+        <p class="field-error" id="fileError" role="alert" hidden></p>
+
+        <div class="row">
+          <div class="field">
+            <label for="quarter">Quarter</label>
+            <select id="quarter" required aria-describedby="uploadError">
+              <option value="">Select…</option>
+              <option value="1">Q1 (Jan – Mar)</option><option value="2">Q2 (Apr – Jun)</option>
+              <option value="3">Q3 (Jul – Sep)</option><option value="4">Q4 (Oct – Dec)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="year">Year</label>
+            <select id="year" required></select>
+          </div>
+        </div>
+        <p class="field-error" id="uploadError" role="alert" hidden></p>
+
+        <button type="submit" class="btn btn--primary btn--block" id="uploadBtn" disabled>Upload &amp; activate</button>
+      </form>
+
+      <div class="progress" id="progress" hidden>
+        <ol class="steps" id="steps" aria-label="Processing steps">
+          <li data-step="upload"><span class="steps__dot" aria-hidden="true"></span><span class="steps__label">Uploading PDF</span></li>
+          <li data-step="extract"><span class="steps__dot" aria-hidden="true"></span><span class="steps__label">Extracting Chunks</span></li>
+          <li data-step="embed"><span class="steps__dot" aria-hidden="true"></span><span class="steps__label">Generating OpenAI Embeddings</span></li>
+          <li data-step="active"><span class="steps__dot" aria-hidden="true"></span><span class="steps__label">Active</span></li>
+        </ol>
+        <div class="bar" role="progressbar" aria-label="Playbook processing progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="bar__fill" id="barFill"></div></div>
+        <p class="progress__label" id="stepLabel" aria-live="polite"></p>
+      </div>
+
+      <div class="section-head">
+        <h3>Playbook history</h3>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <caption class="sr-only">Uploaded playbooks</caption>
+          <thead><tr><th scope="col">Playbook</th><th scope="col">File</th><th scope="col">Uploaded</th><th scope="col"><span class="sr-only">Status</span></th></tr></thead>
+          <tbody id="pbRows"></tbody>
+        </table>
+      </div>
+      <p class="empty" id="pbEmpty" hidden>No playbooks yet. Upload the first one above.</p>
+    </section>
+
+    <!-- RIGHT: stores + sandbox -->
+    <div class="stack">
+      <section class="card" aria-labelledby="stTitle">
+        <div class="card__head">
+          <h2 id="stTitle">Stores &amp; local knowledge</h2>
+          <p class="muted">What the agent knows about each location, on top of the shared playbook.</p>
+        </div>
+        <div class="tabs-row">
+          <div class="store-select">
+            <label for="storeSelect">Store</label>
+            <select id="storeSelect" aria-controls="storePanel"></select>
+          </div>
+          <button type="button" class="btn btn--ghost" id="addStoreBtn">+ Add store</button>
+        </div>
+        <div id="storePanel" role="region" aria-label="Selected store" tabindex="0" aria-live="polite"></div>
+      </section>
+
+      <section class="card" aria-labelledby="sbTitle">
+        <div class="card__head">
+          <h2 id="sbTitle">Test sandbox</h2>
+          <p class="muted" id="sbSub">Ask a question as a marketing user would, and inspect exactly what the agent retrieved.</p>
+        </div>
+        <form id="sandboxForm" novalidate>
+          <label for="sbPrompt">Prompt for <strong id="sbStore">this store</strong></label>
+          <textarea id="sbPrompt" rows="3" maxlength="500" placeholder="e.g. What should we run for Spring Break?" aria-describedby="sbError sbCount" required></textarea>
+          <div class="sb-meta">
+            <div class="chips" id="sbChips" aria-label="Example prompts"></div>
+            <span class="muted small" id="sbCount">0 / 500</span>
+          </div>
+          <p class="field-error" id="sbError" role="alert" hidden></p>
+          <button type="submit" class="btn btn--primary" id="sbRun">Run test</button>
+        </form>
+        <div id="sbResult" aria-live="polite"></div>
+      </section>
+    </div>
+  </main>
+
+  <dialog id="authDialog" aria-labelledby="authTitle">
+    <form method="dialog" id="authForm" novalidate>
+      <h2 id="authTitle">Sign in</h2>
+      <p class="muted">Enter the admin key from the server's <code>.env</code> file (<code>ADMIN_API_KEY</code>). It is kept only for this browser session.</p>
+      <label for="authKey">Admin key</label>
+      <input type="password" id="authKey" autocomplete="off" required aria-describedby="authError">
+      <p class="field-error" id="authError" role="alert" hidden></p>
+      <button type="submit" class="btn btn--primary btn--block" id="authBtn">Connect</button>
+    </form>
+  </dialog>
+
+  <dialog id="storeDialog" aria-labelledby="storeDlgTitle">
+    <form method="dialog" id="storeForm" novalidate>
+      <h2 id="storeDlgTitle">Add a store</h2>
+      <p class="muted" id="storeDlgIntro">The store shows up here and in the marketing planner right away. All fields are required: the AI uses them to research the local community, demographics, schools, events and culture for you automatically.</p>
+      <label for="stName">Store name <span class="req" aria-hidden="true">*</span></label>
+      <input type="text" id="stName" maxlength="150" autocomplete="off" placeholder="Bricks &amp; Minifigs Smyrna" required>
+      <label for="stAddress">Street address <span class="req" aria-hidden="true">*</span></label>
+      <input type="text" id="stAddress" maxlength="255" autocomplete="off" placeholder="2800 Cobb Pkwy SE" required>
+      <div class="form-grid">
+        <div>
+          <label for="stCity">City <span class="req" aria-hidden="true">*</span></label>
+          <input type="text" id="stCity" maxlength="100" autocomplete="off" required>
+        </div>
+        <div>
+          <label for="stState">State <span class="req" aria-hidden="true">*</span></label>
+          <input type="text" id="stState" maxlength="2" autocomplete="off" placeholder="GA" required>
+        </div>
+        <div>
+          <label for="stZip">ZIP <span class="req" aria-hidden="true">*</span></label>
+          <input type="text" id="stZip" maxlength="10" autocomplete="off" inputmode="numeric" placeholder="30080" required>
+        </div>
+      </div>
+      <label class="check" id="stResearchRow" hidden>
+        <input type="checkbox" id="stResearch"> <span>Re-run the AI local research after saving <span class="muted">(replaces the AI-written entries; yours are kept)</span></span>
+      </label>
+      <p class="field-error" id="stError" role="alert" hidden></p>
+      <div class="dlg-actions">
+        <button type="button" class="btn btn--ghost" id="stCancel">Cancel</button>
+        <button type="submit" class="btn btn--primary" id="stSubmit">Add store</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+  <script src="js/app.js?v=7" defer></script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>BAM Marketing Planner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css?v=7">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <header class="topbar">
+    <div class="topbar__inner">
+      <div class="brand">
+        <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <rect x="3" y="12" width="26" height="16" rx="3" fill="currentColor"/>
+          <circle cx="11" cy="8.5" r="3.5" fill="currentColor"/><circle cx="21" cy="8.5" r="3.5" fill="currentColor"/>
+        </svg>
+        <span class="brand__name">BAM Marketing Planner</span>
+      </div>
+      <div class="topbar__status">
+        <span class="pill pill--muted" id="activePill" role="status">Playbook: …</span>
+        <span class="pill pill--muted" id="who" hidden></span>
+        <button type="button" class="btn btn--ghost btn--sm" id="signOut" hidden>Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="ask">
+    <section class="card" id="askCard" aria-labelledby="askTitle">
+      <div class="card__head">
+        <h1 id="askTitle" class="h1">What do you want to plan?</h1>
+        <p class="muted">Pick a store and ask. You get a plan built from the current BAM Marketing Playbook and that store's local schools, audience and events.</p>
+      </div>
+
+      <form id="askForm" novalidate>
+        <div class="field">
+          <label for="storeSelect">Store <span class="req" aria-hidden="true">*</span></label>
+          <select id="storeSelect" required aria-describedby="storeDetail storeError">
+            <option value="">Loading stores…</option>
+          </select>
+          <p class="store-detail small" id="storeDetail" aria-live="polite"></p>
+        </div>
+        <p class="field-error" id="storeError" role="alert" hidden></p>
+
+        <label for="q" class="mt-16">Your question <span class="req" aria-hidden="true">*</span></label>
+        <textarea id="q" rows="3" maxlength="500" placeholder="e.g. What should we run for Spring Break?" aria-describedby="qError qCount" required></textarea>
+        <div class="sb-meta">
+          <div class="chips" id="suggest" aria-label="Example questions"></div>
+          <span class="muted small" id="qCount">0 / 500</span>
+        </div>
+        <p class="field-error" id="qError" role="alert" hidden></p>
+
+        <div class="chips-block" id="recentBlock" hidden>
+          <span class="small muted" id="recentLabel">Recent</span>
+          <div class="chips" id="recent" role="group" aria-labelledby="recentLabel"></div>
+        </div>
+
+        <button type="submit" class="btn btn--primary btn--lg" id="askBtn">Get my plan</button>
+      </form>
+    </section>
+
+    <section class="card empty-state" id="noStores" hidden aria-labelledby="noStoresTitle">
+      <h2 id="noStoresTitle">No stores yet</h2>
+      <p class="muted">Plans are built per store, and no store has been added yet. An admin needs to add one first; its local community details are then researched automatically.</p>
+      <a class="btn btn--primary" id="adminLink" href="./" hidden>Open the admin portal</a>
+    </section>
+
+    <section id="answer" aria-live="polite"></section>
+
+    <p class="muted small ask__note">Plans are generated from the playbook and each store's saved local data. Check dates, promos and anything marked as a heads-up before you publish or print.</p>
+  </main>
+
+  <dialog id="authDialog" aria-labelledby="authTitle">
+    <form method="dialog" id="authForm" novalidate>
+      <h2 id="authTitle">Team sign-in</h2>
+      <p class="muted">Enter the team access code your admin gave you. It is kept only for this browser session.</p>
+      <label for="authKey">Access code</label>
+      <input type="password" id="authKey" autocomplete="off" required aria-describedby="authError">
+      <p class="field-error" id="authError" role="alert" hidden></p>
+      <button type="submit" class="btn btn--primary btn--block" id="authBtn">Continue</button>
+    </form>
+  </dialog>
+
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+  <script src="js/ask.js?v=7" defer></script>
+</body>
+</html>
