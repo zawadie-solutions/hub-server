@@ -70,7 +70,7 @@ module.exports = [
     name: 'BAM Local Agent',
     category: 'Marketing',
     description:
-      "RAG-based marketing planner and admin portal for BAM's quarterly marketing playbook — matches campaigns to each store's local demographics, schools and events, with a marketing planner page and an admin portal for managing playbooks and store knowledge.",
+      "Turns the BAM quarterly marketing playbook into a plan tailored to each store's demographics, schools and local events, with an admin portal for managing playbooks and store knowledge.",
     status: 'available',
     // Runs as its own process (apps/bam-local-agent), not built into the hub's — start it
     // separately with `npm start` in that folder. The hub's signed identity header (signHubIdentity)
