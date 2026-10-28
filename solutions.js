@@ -47,9 +47,7 @@ module.exports = [
     category: 'Operations',
     description:
       'Watches Google review links tracked in Asana and flags when one disappears, so a bad review being removed by its author never goes unnoticed.',
-    // Still being built out (see google-review-monitor/README.md) — listed
-    // so the team can see it coming, but not yet promoted to "available".
-    status: 'development',
+    status: 'available',
     // Built in: runs inside the hub's own process (apps/google-review-monitor),
     // so there is no separate server to start. Configured from the hub's .env.
     load: () => import('./apps/google-review-monitor/src/hub.ts'),
@@ -66,6 +64,23 @@ module.exports = [
     // hub's own process (apps/company-research) with its data in MySQL.
     load: () => import('./apps/company-research/src/hub.ts'),
     icon: 'search',
+  },
+  {
+    id: 'bam-local-agent',
+    name: 'BAM Local Agent',
+    category: 'Marketing',
+    description:
+      "RAG-based marketing planner and admin portal for BAM's quarterly marketing playbook — matches campaigns to each store's local demographics, schools and events, with a marketing planner page and an admin portal for managing playbooks and store knowledge.",
+    status: 'available',
+    // Runs as its own process (apps/bam-local-agent), not built into the hub's — start it
+    // separately with `npm start` in that folder. The hub's signed identity header (signHubIdentity)
+    // is trusted by the app when it has the same ZAWADIE_SSO_SECRET, so hub admins get the admin
+    // portal and any other user with this project gets the marketing planner without a second
+    // password; the app's own ADMIN_API_KEY/TEAM_ACCESS_KEY remain the fallback when it is opened
+    // directly.
+    target: process.env.BAM_LOCAL_AGENT_URL || 'http://localhost:3000',
+    stripPrefix: true,
+    icon: 'bot',
   },
   {
     id: 'bam-comment-review',
