@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import apiRouter, { pageRouter } from './routes/api.js';
+import { ensureTables } from './config/ensureTables.js';
 import { ensureSchema } from './config/migrate.js';
 
 const app = express();
@@ -20,6 +21,7 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: 'Internal server error' });
 });
 
+await ensureTables();    // creates stores/playbooks/knowledge_chunks on a fresh database (no-op once they exist)
 await ensureSchema();   // adds the auto-research columns / knowledge types to an existing database
 
 // Only listen on our own port when run standalone (`npm start` in this folder).
