@@ -1,7 +1,7 @@
 {
   "name": "bam-local-agent",
   "version": "0.1.0",
-  "description": "BAM Local Agent System - RAG-based AI marketing planner for BAM local stores",
+  "description": "BAM Local Agent System - RAG-based AI marketing planner for BAM local stores. Built in: runs inside the hub's own process (see hub.js); dependencies are shared with hub-server/package.json, so versions here must stay compatible with what's installed there.",
   "type": "module",
   "main": "src/app.js",
   "engines": { "node": ">=20" },
@@ -16,10 +16,10 @@
   },
   "dependencies": {
     "dotenv": "^16.4.5",
-    "express": "^4.21.0",
-    "multer": "^1.4.5-lts.1",
-    "mysql2": "^3.11.0",
-    "openai": "^4.67.0",
-    "pdf-parse": "^1.1.1"
+    "express": "^4.22.3",
+    "multer": "^2.4.0",
+    "mysql2": "^3.24.5",
+    "openai": "^4.104.0",
+    "pdf-parse": "^1.1.4"
   }
 }

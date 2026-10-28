@@ -12,8 +12,14 @@ const safeEqual = (a, b) =>
  * Set ZAWADIE_SSO_SECRET to the same value as the hub's. If it is unset, SSO is off and the keys are required as before. */
 const MAX_SKEW_MS = 5 * 60 * 1000;
 
-/** Returns { email, role } when the request carries a valid, fresh hub signature, otherwise null. */
+/** Returns { email, role } when the hub has already identified this request, otherwise null. */
 export function verifyHubUser(req) {
+  // Built in: running inside the hub's own process (see ../../hub.js), the hub hands over the
+  // already-checked user directly as req.hubUser (server.js: handOverUser) — no header to verify,
+  // since there's no longer a proxy hop between the hub and this app. Only reached when mounted
+  // standalone behind a reverse proxy (e.g. BAM_LOCAL_AGENT_URL) does the signature check below apply.
+  if (req.hubUser) return { email: String(req.hubUser.email).toLowerCase(), role: String(req.hubUser.role) };
+
   const secret = process.env.ZAWADIE_SSO_SECRET;
   if (!secret) return null;
   const email = req.get('x-zawadie-user-email');

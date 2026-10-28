@@ -72,14 +72,13 @@ module.exports = [
     description:
       "Turns the BAM quarterly marketing playbook into a plan tailored to each store's demographics, schools and local events, with an admin portal for managing playbooks and store knowledge.",
     status: 'available',
-    // Runs as its own process (apps/bam-local-agent), not built into the hub's — start it
-    // separately with `npm start` in that folder. The hub's signed identity header (signHubIdentity)
-    // is trusted by the app when it has the same ZAWADIE_SSO_SECRET, so hub admins get the admin
-    // portal and any other user with this project gets the marketing planner without a second
-    // password; the app's own ADMIN_API_KEY/TEAM_ACCESS_KEY remain the fallback when it is opened
-    // directly.
-    target: process.env.BAM_LOCAL_AGENT_URL || 'http://localhost:3000',
-    stripPrefix: true,
+    // Built in: runs inside the hub's own process (apps/bam-local-agent), same as the other
+    // built-ins below — no separate process to start or keep alive. The hub's signed identity
+    // header (signHubIdentity) is trusted by the app when it has the same ZAWADIE_SSO_SECRET, so
+    // hub admins get the admin portal and any other user with this project gets the marketing
+    // planner without a second password; the app's own ADMIN_API_KEY/TEAM_ACCESS_KEY remain the
+    // fallback when it is run standalone with `npm start` in that folder.
+    load: () => import('./apps/bam-local-agent/hub.js'),
     icon: 'bot',
   },
   {

@@ -8,6 +8,19 @@
 // it works both standalone on its own port and here, behind a path prefix.
 // One .env for the whole app: the hub's own settings plus the built-in
 // solutions' (e.g. Google Review Monitor's DATABASE_URL, ASANA_TOKEN).
+//
+// Locally this file always runs via `tsx` (see package.json "start"), which
+// transparently transpiles TS and resolves extensionless relative imports
+// (e.g. "./db/db" -> "./db/db.ts") the way bundlers do. Hostinger's Node.js
+// hosting instead runs this file directly with plain `node`, which has none
+// of that: Node's native ESM resolver requires an explicit file extension on
+// every relative import. Registering tsx's runtime hooks here reproduces the
+// same behavior under plain `node`, so built-in solutions like
+// google-review-monitor and company-research (whose hub.ts files import
+// sibling modules without extensions) start the same way in both places.
+require('tsx/cjs/api').register();
+require('tsx/esm/api').register();
+
 require('dotenv').config();
 
 const path = require('node:path');

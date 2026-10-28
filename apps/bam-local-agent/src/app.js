@@ -22,8 +22,15 @@ app.use((err, req, res, next) => {
 
 await ensureSchema();   // adds the auto-research columns / knowledge types to an existing database
 
-const port = process.env.PORT || 3000;
-const server = app.listen(port, () => console.log(`BAM Local Agent listening on port ${port}`));
-server.setTimeout(110_000); // stay under Hostinger's 120s request limit
+// Only listen on our own port when run standalone (`npm start` in this folder).
+// When the Zawadie hub imports this module instead (see ../hub.js), it mounts
+// `app` itself and must own the listening socket.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const port = process.env.PORT || 3000;
+  const server = app.listen(port, () => console.log(`BAM Local Agent listening on port ${port}`));
+  server.setTimeout(110_000); // stay under Hostinger's 120s request limit
+}
 
 process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
+
+export default app;
