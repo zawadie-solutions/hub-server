@@ -50,24 +50,32 @@ describe("runMonthCheck progress and cancel", () => {
     expect(checking[0]).toMatchObject({ totalLocations: 2, reviewsTotal: 3 });
   });
 
-  it("cancel stops before the next review, keeps what was checked, and neither retires nor notifies", async () => {
+  it("cancel stops before the next review, keeps what was checked, does not retire, but still notifies what it found", async () => {
     let seen = 0;
     const { repo, notifier, result } = await run({
       checker: fakeChecker(REMOVED),
       isCancelled: () => seen++ >= 1, // allow one review, then cancel
     });
-    expect(result).toMatchObject({ checked: 1, removed: 1, cancelled: true, notified: false });
-    expect(notifier.send).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ checked: 1, removed: 1, cancelled: true, notified: true });
+    expect(notifier.send).toHaveBeenCalledTimes(1);
     const rows = await repo.all();
-    expect(rows.filter((r) => r.status === "REVIEW_REMOVED").length).toBe(1);
-    expect(rows.every((r) => r.monitoring_active)).toBe(true);
+    const removed = rows.filter((r) => r.status === "REVIEW_REMOVED");
+    expect(removed.length).toBe(1);
+    expect(removed[0].notification_sent).toBeTruthy();
+    expect(rows.filter((r) => r.status !== "REVIEW_REMOVED").every((r) => r.monitoring_active)).toBe(true);
   });
 
   it("without a cancel, a finished run still retires and notifies as before", async () => {
     const { repo, notifier, result } = await run({ checker: fakeChecker(REMOVED) });
     expect(result).toMatchObject({ checked: 3, removed: 3, cancelled: false, notified: true });
     expect(notifier.send).toHaveBeenCalledTimes(1);
-    expect((await repo.all()).every((r) => !r.monitoring_active)).toBe(true);
+    expect((await repo.all()).every((r) => !r.monitoring_active && r.notification_sent)).toBe(true);
+  });
+
+  it("a cancelled run with nothing removed sends nothing", async () => {
+    const { notifier, result } = await run({ isCancelled: () => true });
+    expect(result).toMatchObject({ checked: 0, cancelled: true, notified: false });
+    expect(notifier.send).not.toHaveBeenCalled();
   });
 });
 

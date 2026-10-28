@@ -2,7 +2,7 @@ import type { AsanaClient } from "../asana/client";
 import type { AsanaSettings } from "../asana/sync";
 import { syncAsana } from "../asana/sync";
 import type { ReviewRepo } from "../db/repo";
-import { buildRemovalMessage } from "../notify/message";
+import { notifyPending } from "../notify/service";
 import type { Notifier, ReviewChecker, ReviewRow } from "../types";
 import { checkWithConfirmation, prepareChecker } from "./cycle";
 
@@ -82,7 +82,9 @@ export async function runMonthCheck(opts: {
   onProgress?: (msg: string) => void;
   /** Called at the start, then whenever the run moves to a new review. */
   onState?: (p: RunProgress) => void;
-  /** Polled between reviews; returning true stops the run without retiring or notifying. */
+  /** Keep checking reviews after their removal was notified (KEEP_CHECKING_REMOVED). Default: stop. */
+  keepCheckingRemoved?: boolean;
+  /** Polled between reviews; returning true stops the run (without retiring); removals found so far are still notified. */
   isCancelled?: () => boolean;
   /** Check only part of the month (the whole month is still synced from Asana). Default: all of it. */
   select?: RunSelection;
@@ -160,17 +162,16 @@ export async function runMonthCheck(opts: {
     await sleep(opts.checkDelayMs);
   }
 
-  if (cancelled) {
-    log(`Cancelled after ${checked} of ${rows.length} reviews.`);
-    return { tasksScanned: sync.tasksScanned, reviewsFound: sync.reviewsFound, checked, removed: removed.length, unknown, checkedGoogle: true, notified: false, cancelled: true, synced: didSync };
-  }
+  if (cancelled) log(`Cancelled after ${checked} of ${rows.length} reviews.`);
+  else if (opts.retireAfterRun) await opts.repo.setMonitoringActive(touchedIds, false);
 
-  if (opts.retireAfterRun) await opts.repo.setMonitoringActive(touchedIds, false);
-
+  // Removals are sent even when the run was cancelled. The digest covers every removal not yet
+  // notified (also ones left over from a run cut short by a restart) and marks them sent, so the
+  // daily run doesn't alert about them again. A failed send is recorded and retried by the daily run.
   let notified = false;
   if (removed.length && opts.notifier) {
-    await opts.notifier.send(buildRemovalMessage(removed));
-    notified = true;
+    const sent = await notifyPending(opts.repo, opts.notifier, { stopCheckingAfterNotify: !opts.keepCheckingRemoved });
+    notified = sent.sent > 0;
   }
 
   return {
@@ -181,7 +182,7 @@ export async function runMonthCheck(opts: {
     unknown,
     checkedGoogle: true,
     notified,
-    cancelled: false,
+    cancelled,
     synced: didSync,
   };
 }

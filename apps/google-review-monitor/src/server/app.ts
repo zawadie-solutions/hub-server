@@ -40,6 +40,7 @@ export interface MonthRunnerOpts {
   buildNotifier: () => Notifier;
   checkDelayMs: number;
   removalRecheckDelayMs: number;
+  keepCheckingRemoved?: boolean;
   /** Run now skips the Asana sync when the month was synced within this many minutes (0 or absent = always sync). */
   syncFreshMinutes?: () => number;
 }
@@ -382,6 +383,7 @@ export function createApp(opts: {
             notifier,
             checkDelayMs: runner.checkDelayMs,
             removalRecheckDelayMs: runner.removalRecheckDelayMs,
+            keepCheckingRemoved: runner.keepCheckingRemoved,
             retireAfterRun: projectGid !== runner.asanaSettings.projectGid,
             onState: (p) => (live.progress = p),
             isCancelled: () => live.cancelRequested,
@@ -390,7 +392,7 @@ export function createApp(opts: {
           });
           await opts.repo.finishAsanaRun(projectGid, result.cancelled ? { ok: false, error: CANCELLED } : { ok: true, reviewCount: result.reviewsFound, synced: result.synced });
           const counts = `${result.synced ? "synced from Asana first; " : "used the recent Asana sync; "}${plural(result.checked, "review")} checked, ${result.removed.toLocaleString("en-US")} removed, ${result.unknown.toLocaleString("en-US")} could not be checked`;
-          if (result.cancelled) await audit(actor, "run.cancelled", `Check of ${month} cancelled part-way: ${counts}`);
+          if (result.cancelled) await audit(actor, "run.cancelled", `Check of ${month} cancelled part-way: ${counts}${result.notified ? "; removal alert sent" : ""}`);
           else if (!result.checkedGoogle) await audit(actor, "run.finished", `Synced ${month} from Asana (${plural(result.reviewsFound, "review")}); no review source is set up, so nothing was checked`);
           else await audit(actor, "run.finished", `Check of ${month} finished: ${counts}${result.notified ? "; removal alert sent" : ""}`);
         } catch (e) {

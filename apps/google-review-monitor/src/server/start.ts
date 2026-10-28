@@ -23,6 +23,7 @@ function buildMonthRunner(): MonthRunnerOpts | undefined {
       buildNotifier,
       checkDelayMs: config.checkDelayMs,
       removalRecheckDelayMs: config.removalRecheckDelayMs,
+      keepCheckingRemoved: config.keepCheckingRemoved,
       syncFreshMinutes: () => settings.syncFreshMinutes,
     };
   } catch (e) {
