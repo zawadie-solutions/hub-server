@@ -240,10 +240,15 @@ export async function processQueue({ maxMs = MAX_RUN_MS } = {}) {
 }
 
 /**
- * Local development only (NODE_ENV is not "production", or RESEARCH_IN_PROCESS=on): there is no cron job on a developer's
- * machine, so run the worker right away, in the background. In production the cron job does this and this does nothing.
+ * Runs the worker right away, in the background, instead of waiting for the next scheduled tick
+ * (hub.js schedules processQueue() every 5 minutes). This app now always runs in-process — inside
+ * the Zawadie hub on Hostinger, or via the hub locally — so there's no longer a "local vs.
+ * production, no always-on worker" distinction for this immediate kick; the 5-minute schedule
+ * alone already covers "no always-on worker" (a queued store is never stuck for more than 5
+ * minutes even if this kick is skipped, e.g. by GET_LOCK contention with a run already in
+ * progress). Set RESEARCH_KICK=off to disable (e.g. to rely on the schedule only).
  */
 export function kickWorkerIfLocal() {
-  const local = process.env.NODE_ENV !== 'production' || /^(on|true|1|yes)$/i.test(process.env.RESEARCH_IN_PROCESS || '');
-  if (local) processQueue().catch((err) => console.error('[research] worker failed:', err.message));
+  if (/^(off|false|0|no)$/i.test(process.env.RESEARCH_KICK || '')) return;
+  processQueue().catch((err) => console.error('[research] worker failed:', err.message));
 }
