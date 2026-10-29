@@ -18,12 +18,14 @@ const MAX_CHUNK_CHARS = 1500;                               // knowledge entries
 
 /* ---------- prompt ---------- */
 
+// Every entry carries the pages it came from, so each knowledge chunk shows its own sources in the admin.
+const ENTRY = (what) => `{ "text": "${what}", "sources": ["full URL of each page this entry came from"] }`;
 const SHAPE = `{
-  "community": "ONE paragraph: what this area is like - the town/neighborhood, the surrounding region, the local economy, how people live, shop and spend free time",
-  "demographics": ["1-3 short paragraphs: population and growth, age mix and median age, households and families with children, income, education, notable groups of shoppers"],
-  "schools": ["up to 6 entries, one per school district or major school/college: name, type, size if known, and the academic calendar (spring break, winter break, first and last day) when known"],
-  "events": ["up to 8 entries, one per recurring or upcoming local event: name, where, typical timing, who attends, and why it matters to a LEGO / toy / collectibles store"],
-  "culture": "ONE paragraph: local culture and interests - traditions, hobbies, sports teams and loyalties, arts, faith and family life, community spirit, anything that shapes what families and fans here care about"
+  "community": ${ENTRY('ONE paragraph: what this area is like - the town/neighborhood, the surrounding region, the local economy, how people live, shop and spend free time')},
+  "demographics": [${ENTRY('1-3 short paragraphs: population and growth, age mix and median age, households and families with children, income, education, notable groups of shoppers')}],
+  "schools": [${ENTRY('up to 6 entries, one per school district or major school/college: name, type, size if known, and the academic calendar (spring break, winter break, first and last day) when known')}],
+  "events": [${ENTRY('up to 8 entries, one per recurring or upcoming local event: name, where, typical timing, who attends, and why it matters to a LEGO / toy / collectibles store')}],
+  "culture": ${ENTRY('ONE paragraph: local culture and interests - traditions, hobbies, sports teams and loyalties, arts, faith and family life, community spirit, anything that shapes what families and fans here care about')}
 }`;
 
 function systemPrompt(web) {
@@ -32,8 +34,8 @@ function systemPrompt(web) {
 Cover five things: the local community, demographics, schools, local events and culture.
 
 ${web
-  ? 'Use web search. Prefer official sources (school district sites, city and county sites, census.gov, chamber of commerce, event organisers). Give an exact date only when you found it on a reliable page; otherwise give the typical timing (for example "usually the first weekend of October").'
-  : 'You cannot browse the web. Use only well-established facts you are confident about, and describe event and calendar timing in general terms ("usually early October"). Do not give specific calendar dates for the current or next year.'}
+  ? 'Use web search. Prefer official sources (school district sites, city and county sites, census.gov, chamber of commerce, event organisers). Give an exact date only when you found it on a reliable page; otherwise give the typical timing (for example "usually the first weekend of October"). Every entry MUST list in "sources" the full URL of each page (1-3) you found its facts on in this search. Copy URLs exactly; never guess or build one. Leave out any entry you cannot point to a page for.'
+  : 'You cannot browse the web. Use only well-established facts you are confident about, and describe event and calendar timing in general terms ("usually early October"). Do not give specific calendar dates for the current or next year. Leave "sources" empty: you have no pages to cite.'}
 
 Rules:
 - Every entry must stand alone, so name the town or district in it. Plain text only: no markdown, bullets, asterisks or links.
@@ -61,7 +63,7 @@ function textAndSources(response) {
       for (const a of c.annotations || []) if (a.type === 'url_citation' && a.url && !urls.includes(a.url)) urls.push(a.url);
     }
   }
-  return { text, sources: urls.slice(0, 8) };
+  return { text, sources: urls };
 }
 
 /** Researches with live web search when the account allows it, otherwise falls back to the model's own knowledge. */
@@ -90,20 +92,37 @@ const clean = (v) => {
   if (v && typeof v === 'object') v = Object.values(v).filter((x) => typeof x === 'string').join(' - ');
   return typeof v === 'string' ? v.replace(/\s+/g, ' ').replace(/[*_`#]+/g, '').trim().slice(0, MAX_CHUNK_CHARS) : '';
 };
-const many = (v, max) => (Array.isArray(v) ? v : v ? [v] : []).map(clean).filter((s) => s.length >= 20).slice(0, max);
 
-/** Pulls the JSON object out of the model's reply and turns it into [{ chunkType, content }]. */
+/** "https://site/page?utm_source=openai" -> "https://site/page"; anything that isn't an http(s) URL -> null. */
+export function cleanUrl(u) {
+  try {
+    const url = new URL(String(u).trim());
+    if (!/^https?:$/.test(url.protocol)) return null;
+    for (const k of [...url.searchParams.keys()]) if (/^utm_/i.test(k)) url.searchParams.delete(k);
+    return url.toString().replace(/\?$/, '');
+  } catch { return null; }
+}
+
+// An entry is { text, sources: [] } (or, from older prompts, a plain string).
+const entry = (v) => {
+  const obj = v && typeof v === 'object' && !Array.isArray(v) && 'text' in v;
+  const sources = obj && Array.isArray(v.sources) ? [...new Set(v.sources.map(cleanUrl).filter(Boolean))].slice(0, 4) : [];
+  return { content: clean(obj ? v.text : v), sources };
+};
+const many = (v, max) => (Array.isArray(v) ? v : v ? [v] : []).map(entry).filter((e) => e.content.length >= 20).slice(0, max);
+
+/** Pulls the JSON object out of the model's reply and turns it into [{ chunkType, content, sources }]. */
 export function parseResearch(text) {
   const start = String(text ?? '').indexOf('{'), end = String(text ?? '').lastIndexOf('}');
   if (start < 0 || end <= start) throw new Error('The research did not come back in the expected format.');
   let obj;
   try { obj = JSON.parse(text.slice(start, end + 1)); } catch { throw new Error('The research did not come back in the expected format.'); }
   const chunks = [
-    ...many(obj.community, 1).map((content) => ({ chunkType: 'community', content })),
-    ...many(obj.demographics, 3).map((content) => ({ chunkType: 'demographic', content })),
-    ...many(obj.schools, 6).map((content) => ({ chunkType: 'school', content })),
-    ...many(obj.events, 8).map((content) => ({ chunkType: 'event', content })),
-    ...many(obj.culture, 1).map((content) => ({ chunkType: 'culture', content }))
+    ...many(obj.community, 1).map((e) => ({ chunkType: 'community', ...e })),
+    ...many(obj.demographics, 3).map((e) => ({ chunkType: 'demographic', ...e })),
+    ...many(obj.schools, 6).map((e) => ({ chunkType: 'school', ...e })),
+    ...many(obj.events, 8).map((e) => ({ chunkType: 'event', ...e })),
+    ...many(obj.culture, 1).map((e) => ({ chunkType: 'culture', ...e }))
   ];
   if (chunks.length < 3) throw new Error('The research came back nearly empty. Try again in a moment.');
   return chunks;
@@ -119,11 +138,46 @@ async function setStatus(locationId, status, error = null) {
   );
 }
 
+/**
+ * False only when a URL clearly doesn't exist (404/410, or the site can't be reached at all), which is how a made-up
+ * link shows up. Sites that block bots (401/403/405/429) or answer slowly count as real.
+ */
+export async function urlExists(url, timeoutMs = 8000) {
+  for (const method of ['HEAD', 'GET']) {
+    try {
+      const res = await fetch(url, { method, redirect: 'follow', signal: AbortSignal.timeout(timeoutMs), headers: { 'user-agent': 'Mozilla/5.0 (BAM Local Agent source check)' } });
+      if (res.status === 405 && method === 'HEAD') continue;
+      return ![404, 410].includes(res.status);
+    } catch (err) {
+      if (err.name === 'TimeoutError') return true;
+      if (method === 'GET') return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * Keeps each entry's sources that web search actually cited, or that exist when checked. In web mode an entry left with
+ * no source is dropped: every AI fact in the admin must point to a page someone can open.
+ */
+export async function verifySources(chunks, cited, { web, check = urlExists } = {}) {
+  const citedSet = new Set(cited.map(cleanUrl).filter(Boolean));
+  const unique = [...new Set(chunks.flatMap((c) => c.sources))].filter((u) => !citedSet.has(u));
+  const ok = new Map(await Promise.all(unique.map(async (u) => [u, await check(u)])));
+  const out = chunks.map((c) => ({ ...c, sources: c.sources.filter((u) => citedSet.has(u) || ok.get(u)) }));
+  const kept = web ? out.filter((c) => c.sources.length) : out;
+  const dropped = { entries: out.length - kept.length, links: unique.filter((u) => !ok.get(u)).length };
+  if (web && kept.length < 3) throw new Error('The web research found too few entries it could back with a source. Try again in a moment.');
+  return { chunks: kept, dropped };
+}
+
 async function runResearch(store) {
-  const { text, sources, web } = await withTimeout(callModel(store), RESEARCH_TIMEOUT_MS + 10_000, 'Local research');
-  const chunks = parseResearch(text);
+  const { text, sources: cited, web } = await withTimeout(callModel(store), RESEARCH_TIMEOUT_MS + 10_000, 'Local research');
+  const { chunks, dropped } = await withTimeout(verifySources(parseResearch(text), cited, { web }), 60_000, 'Source check');
+  if (dropped.entries || dropped.links) console.log(`[research] ${store.location_id}: dropped ${dropped.entries} unsourced entries and ${dropped.links} dead links`);
   const vectors = await withTimeout(generateEmbeddings(chunks.map((c) => c.content)), 60_000, 'Embedding');
-  const metadata = JSON.stringify({ source: AUTO_SOURCE, web, model: RESEARCH_MODEL, sources, researched_at: new Date().toISOString() });
+  const researchedAt = new Date().toISOString();
+  const metadataFor = (c) => JSON.stringify({ source: AUTO_SOURCE, web, model: RESEARCH_MODEL, sources: c.sources, researched_at: researchedAt });
 
   // Swap in the new research only once it is complete: earlier auto-researched entries go, hand-entered ones stay.
   const conn = await pool.getConnection();
@@ -136,7 +190,7 @@ async function runResearch(store) {
     for (let i = 0; i < chunks.length; i++) {
       await conn.execute(
         'INSERT INTO knowledge_chunks (location_id, chunk_type, content, metadata, embedding, is_active) VALUES (?, ?, ?, ?, ?, 1)',
-        [store.location_id, chunks[i].chunkType, chunks[i].content, metadata, JSON.stringify(vectors[i])]
+        [store.location_id, chunks[i].chunkType, chunks[i].content, metadataFor(chunks[i]), JSON.stringify(vectors[i])]
       );
     }
     await conn.commit();

@@ -33,7 +33,7 @@
   const showError = (el, msg, input) => { el.textContent = msg; el.hidden = !msg; if (input) input.setAttribute('aria-invalid', msg ? 'true' : 'false'); };
 
   /* ---------- state & API ---------- */
-  const state = { key: session.get('bam_team_key') || '', sso: false, canAdmin: false, stores: [], playbook: null, busy: false, last: null };
+  const state = { key: session.get('bam_team_key') || '', sso: false, canAdmin: false, stores: [], playbook: null, busy: false, last: null, retry: null };
   class ApiError extends Error { constructor(m, status) { super(m); this.status = status; } }
 
   async function api(path, { method = 'GET', body, signal } = {}) {
@@ -69,6 +69,8 @@
     try {
       await loadMeta();
       session.set('bam_team_key', state.key); input.value = ''; dialog.close(); $('#signOut').hidden = false;
+      // Signed in because a question was turned away: send it again instead of leaving an empty page.
+      if (state.retry) { const rerun = state.retry === 'rerun'; state.retry = null; ask(rerun); }
     } catch (err) {
       if (err.status !== 401) showError($('#authError'), err.message, input);
     } finally { setLoading(btn, false); }
@@ -122,7 +124,7 @@
   $('#storeSelect').addEventListener('change', () => { showError($('#storeError'), '', $('#storeSelect')); local.set('bam_store', selectedStore()); showStoreDetail(); });
   const storeName = (id) => { const s = state.stores.find((x) => x.location_id === id); return s ? s.city : id; };
 
-  const SUGGESTIONS = ['What should we run for Spring Break?', "Plan our Mother's Day promotion", 'How should we launch the BAM Passport?', 'Ideas for graduation season'];
+  const SUGGESTIONS = ['What should we run for Spring Break?', 'Create a spring break event plan', "Plan our Mother's Day promotion", 'Generate an event playbook for a local school partner'];
   const q = $('#q');
   SUGGESTIONS.forEach((t) => $('#suggest').append(h('button', { type: 'button', class: 'chip', text: t, onclick: () => { q.value = t; q.dispatchEvent(new Event('input')); q.focus(); } })));
   q.addEventListener('input', () => { $('#qCount').textContent = `${q.value.length} / 500`; if (q.value.trim().length >= 5) showError($('#qError'), '', q); });
@@ -170,7 +172,8 @@
       $('#answer').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
     } catch (err) {
       clear($('#answer'));
-      if (err.status !== 401) {
+      if (err.status === 401) state.retry = rerun ? 'rerun' : 'form';
+      else {
         const msg = err.name === 'AbortError' ? 'That took too long. Please try again.' : err.message;
         $('#answer').replaceChildren(h('div', { class: 'callout', role: 'alert', text: msg }));
       }
@@ -189,6 +192,14 @@
   }
 
   function renderAnswer(res, question) {
+    if (res.type === 'event_plan') {
+      $('#answer').replaceChildren(window.BAMEventPlan.render(res, {
+        meta: `${res.store.city}, ${res.store.state} · ${res.playbook ? `Playbook ${res.playbook.label}` : 'No active playbook'} · “${question.length > 60 ? `${question.slice(0, 60)}…` : question}”`,
+        toast, regenerate: () => ask(true),
+        extra: res.consulted?.length ? h('p', { class: 'consulted ep-consulted', text: `Consulted: ${res.consulted.join(' · ')}` }) : null
+      }));
+      return;
+    }
     const a = res.answer;
     const body = h('div', { class: 'result__body' });
     if (a.raw) body.append(h('p', { text: a.raw }));

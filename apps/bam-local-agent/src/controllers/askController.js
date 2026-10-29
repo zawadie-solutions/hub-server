@@ -1,5 +1,6 @@
 import pool from '../config/db.js';
 import { generateLocalizedResult } from '../services/ragService.js';
+import { eventPlanBlocks, eventPlanText } from '../utils/slackFormatter.js';
 import { storeExists, listStores } from '../services/storeService.js';
 import { effectiveStatus, workerActive } from '../services/localResearchService.js';
 import { withTimeout, MAX_OPERATION_MS } from '../utils/timeout.js';
@@ -37,6 +38,16 @@ function consulted(result) {
   return [...names];
 }
 
+/** Optional `mode` in the request body: 'event_plan' or 'marketing_plan' forces one; anything else lets the question decide. */
+export const planMode = (mode) => (['event_plan', 'marketing_plan'].includes(mode) ? mode : 'auto');
+
+/** Event plan fields for the pages: the plan, its plain text (Copy / Download) and, when asked, the Slack Block Kit message. */
+export function eventPlanOutput(result, { slack = false } = {}) {
+  if (!result.plan) return { plan: null, raw: result.raw };
+  const meta = { store: result.store, playbook: result.playbook };
+  return { plan: result.plan, text: eventPlanText(result.plan, meta), ...(slack ? { slack: eventPlanBlocks(result.plan, meta) } : {}) };
+}
+
 export async function askQuestion(req, res, next) {
   try {
     const limit = hit(`ask:${req.ip}`, 20, 10 * 60 * 1000);   // each question costs an OpenAI call
@@ -49,7 +60,8 @@ export async function askQuestion(req, res, next) {
     if (typeof question !== 'string' || question.trim().length < 5 || question.length > 500) {
       return res.status(400).json({ error: 'Type a question between 5 and 500 characters.' });
     }
-    const result = await withTimeout(generateLocalizedResult(question.trim(), location_id), MAX_OPERATION_MS, 'Response generation');
-    res.json({ answer: result.answer, store: result.store, playbook: result.playbook, consulted: consulted(result) });
+    const result = await withTimeout(generateLocalizedResult(question.trim(), location_id, { mode: planMode(req.body.mode) }), MAX_OPERATION_MS, 'Response generation');
+    const base = { type: result.type, store: result.store, playbook: result.playbook, consulted: consulted(result) };
+    res.json(result.type === 'event_plan' ? { ...base, ...eventPlanOutput(result) } : { ...base, answer: result.answer });
   } catch (err) { next(err); }
 }

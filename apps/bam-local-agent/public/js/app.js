@@ -479,7 +479,7 @@
       h('div', { class: 'store-head' },
         h('div', {}, h('h3', { text: s.name }), h('p', { class: 'muted', text: address || 'No address on file' })),
         brk
-          ? h('span', { class: 'badge badge--info', text: `🗓 Spring break ${brk.dates}` })
+          ? h('span', { class: 'badge badge--info', text: `Spring break ${brk.dates}` })
           : h('span', { class: 'badge badge--warn', text: 'No school break on file' })),
       storeActions(s),
       researchBanner(s),
@@ -504,19 +504,19 @@
       text.addEventListener('click', toggle);
       text.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
       const idleLabel = `Delete this ${TYPE_LABEL[c.chunk_type]} entry`;
-      const del = h('button', { type: 'button', class: 'icon-btn', 'aria-label': idleLabel, text: '🗑', disabled: !!c.pending });
+      const del = h('button', { type: 'button', class: 'link-btn kitem__del', 'aria-label': idleLabel, text: 'Delete', disabled: !!c.pending });
       let armed = null;
       del.addEventListener('click', () => {
         if (!armed) {
           del.textContent = 'Delete?'; del.classList.add('btn--danger-ghost'); del.setAttribute('aria-label', 'Confirm delete');
-          armed = setTimeout(() => { armed = null; del.textContent = '🗑'; del.classList.remove('btn--danger-ghost'); del.setAttribute('aria-label', idleLabel); }, 3500);
+          armed = setTimeout(() => { armed = null; del.textContent = 'Delete'; del.classList.remove('btn--danger-ghost'); del.setAttribute('aria-label', idleLabel); }, 3500);
           return;
         }
         clearTimeout(armed); removeChunk(s, c);
       });
       return h('li', { class: 'kitem' },
         h('span', { class: `badge ${c.pending ? 'badge--warn' : 'badge--info'}`, text: c.pending ? 'Saving…' : `${TYPE_LABEL[c.chunk_type]}${c.auto ? ' · AI' : ''}` }),
-        h('div', { class: 'kitem__body' }, text, c.auto && !c.pending && aiMeta(c)), del);
+        h('div', { class: 'kitem__body' }, text, !c.pending && (c.auto ? aiMeta(c) : h('div', { class: 'kmeta', text: 'Added by hand' }))), del);
     }));
   }
 
@@ -526,7 +526,7 @@
   function aiMeta(c) {
     const src = c.sources?.length
       ? h('span', { class: 'kmeta__src' }, 'Sources: ', c.sources.flatMap((u, i) => [i ? ', ' : '', /^https?:\/\//i.test(u) ? h('a', { href: u, target: '_blank', rel: 'noopener noreferrer', text: hostOf(u) }) : u]))
-      : h('span', { class: 'kmeta__src', text: c.web ? 'Web search was used; no source links were returned.' : "No web sources: written from the AI's own knowledge, so verify it." });
+      : h('span', { class: 'kmeta__src kmeta__todo', text: c.web ? 'No source saved (researched before sources were required). Re-run research to add them.' : "No web sources: written from the AI's own knowledge, so verify it." });
     const reviewed = !!c.reviewed_at;
     const btn = h('button', { type: 'button', class: 'link-btn', text: reviewed ? 'Undo' : 'Mark as reviewed' });
     btn.addEventListener('click', async () => {
@@ -539,7 +539,7 @@
       } catch (err) { btn.disabled = false; if (err.status !== 401) toast(`Could not update: ${err.message}`, 'error', 6000); }
     });
     return h('div', { class: 'kmeta' }, src,
-      h('span', { class: reviewed ? 'kmeta__ok' : 'kmeta__todo' }, reviewed ? `✓ Reviewed by ${c.reviewed_by || 'someone'} · ${fmtDate(c.reviewed_at)}` : 'Not reviewed yet', ' ', btn));
+      h('span', { class: reviewed ? 'kmeta__ok' : 'kmeta__todo' }, reviewed ? `Reviewed by ${c.reviewed_by || 'someone'} · ${fmtDate(c.reviewed_at)}` : 'Not reviewed yet', ' ', btn));
   }
 
   async function removeChunk(s, chunk) {
@@ -578,7 +578,7 @@
   }
 
   /* ---------- sandbox ---------- */
-  const SAMPLE_PROMPTS = ['What should we run for Spring Break?', "Plan our Mother's Day promotion", 'How should we launch the BAM Passport?'];
+  const SAMPLE_PROMPTS = ['What should we run for Spring Break?', 'Create a spring break event plan', 'Generate an event playbook for a local school partner'];
   const sbPrompt = $('#sbPrompt');
 
   function renderSandboxHeader() {
@@ -623,6 +623,11 @@
   const KIND = { local: ['badge--info', 'Local data'], facts: ['badge--ok', 'Verified fact'], excerpt: ['badge--neutral', 'Playbook excerpt'] };
 
   function renderResult(res) {
+    const meta = `${res.store.city}, ${res.store.state} · ${res.playbook ? `Playbook ${res.playbook.label}` : 'No active playbook'} · ${res.model}`;
+    if (res.type === 'event_plan') {
+      $('#sbResult').replaceChildren(window.BAMEventPlan.render(res, { meta, toast, extra: contextDetails(res) }));
+      return;
+    }
     const a = res.answer;
     const body = h('div', { class: 'result__body' });
     if (a.raw) body.append(h('p', { text: a.raw }));
@@ -643,8 +648,15 @@
       catch { toast('Copy is blocked by the browser. Select the text and copy it manually.', 'error'); }
     });
 
+    $('#sbResult').replaceChildren(h('div', { class: 'result' },
+      h('div', { class: 'result__head' }, h('span', { class: 'muted', text: meta }), copy),
+      body, contextDetails(res)));
+  }
+
+  /** "Retrieved context" drawer: exactly which chunks the answer was built from, with similarity scores. */
+  function contextDetails(res) {
     const c = res.counts;
-    const ctx = h('details', { class: 'ctx' },
+    return h('details', { class: 'ctx' },
       h('summary', { text: `Retrieved context (${c.total}) — ${c.local} local · ${c.facts} verified facts · ${c.excerpt} excerpts` }),
       h('ul', { class: 'ctx__list' }, res.sources.map((src) => {
         const [cls, label] = KIND[src.kind] ?? KIND.excerpt;
@@ -657,11 +669,6 @@
           h('div', { class: 'ctx__top' }, h('span', { class: `badge ${cls}`, text: label }), src.heading && h('span', { class: 'muted', text: src.heading }),
             h('span', { class: 'score', 'aria-label': `Similarity ${src.score}` }, h('span', { class: 'score__bar' }, fill), src.score.toFixed(2))), text);
       })));
-
-    $('#sbResult').replaceChildren(h('div', { class: 'result' },
-      h('div', { class: 'result__head' },
-        h('span', { class: 'muted', text: `${res.store.city}, ${res.store.state} · ${res.playbook ? `Playbook ${res.playbook.label}` : 'No active playbook'} · ${res.model}` }), copy),
-      body, ctx));
   }
 
   /* ---------- boot ---------- */
