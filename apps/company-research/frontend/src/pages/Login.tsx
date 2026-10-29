@@ -1,4 +1,5 @@
 import { useState } from "react";
+import logo from "../assets/zawadie-logo.png";
 
 const FEATURES = [
   "Research companies, owners and decision-makers from public sources",
@@ -38,8 +39,8 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
     <div className="login-screen">
       <aside className="login-aside">
         <div className="login-aside-top">
-          <span className="mark">C</span>
-          <span className="word">Company Research</span>
+          <img className="mark" src={logo} alt="Zawadie" />
+          <span className="word">Lead Generation</span>
         </div>
         <div className="login-aside-body">
           <h2>Research leads and find verified emails, all in one place.</h2>

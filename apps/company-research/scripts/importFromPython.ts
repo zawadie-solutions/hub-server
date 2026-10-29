@@ -5,7 +5,7 @@
 //
 //   npm run company-research:import-python -- [path to the Python project]   (default ../Zawadie)
 //
-// Refuses to run when Company Research data already exists in MySQL, so it cannot overwrite anything.
+// Refuses to run when Lead Generation data already exists in MySQL, so it cannot overwrite anything.
 import "dotenv/config";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -42,7 +42,7 @@ const db = createDb(databaseUrl());
 await migrate(db);
 const [{ n }] = await db.query<{ n: number }>("SELECT (SELECT COUNT(*) FROM cr_companies) + (SELECT COUNT(*) FROM cr_discovered_emails) + (SELECT COUNT(*) FROM cr_email_verifications) AS n");
 if (Number(n) > 0) {
-  console.error("Company Research data already exists in MySQL — nothing was imported.");
+  console.error("Lead Generation data already exists in MySQL — nothing was imported.");
   await db.end();
   process.exit(1);
 }
@@ -90,7 +90,7 @@ const hubEnvFile = path.join(HUB_ROOT, ".env");
 const ours = parseEnv(hubEnvFile);
 const added = KEY_NAMES.filter((k) => theirs.get(k) && !ours.has(k));
 if (added.length) {
-  appendFileSync(hubEnvFile, `\n# ---- Company Research (apps/company-research) ----\n${added.map((k) => `${k}=${theirs.get(k)}`).join("\n")}\n`);
+  appendFileSync(hubEnvFile, `\n# ---- Lead Generation (apps/company-research) ----\n${added.map((k) => `${k}=${theirs.get(k)}`).join("\n")}\n`);
   console.log(`API keys added to the hub .env: ${added.join(", ")}`);
 }
 console.log("Done.");

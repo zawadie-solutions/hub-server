@@ -10,7 +10,7 @@ import { createApp } from "./server/app";
 
 export function databaseUrl(): string {
   const url = process.env.COMPANY_RESEARCH_DATABASE_URL || process.env.DATABASE_URL;
-  if (!url) throw new Error("Set COMPANY_RESEARCH_DATABASE_URL (or DATABASE_URL) to a MySQL database for Company Research");
+  if (!url) throw new Error("Set COMPANY_RESEARCH_DATABASE_URL (or DATABASE_URL) to a MySQL database for Lead Generation");
   return url;
 }
 

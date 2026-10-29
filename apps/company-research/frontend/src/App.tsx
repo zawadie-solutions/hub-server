@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
+import logo from "./assets/zawadie-logo.png";
 import { usePolling } from "./components/ui";
 import CompaniesPage from "./pages/Companies";
 import DashboardPage from "./pages/Dashboard";
@@ -89,7 +90,7 @@ export default function App() {
   return (
     <div className="layout">
       <aside className="sidebar">
-        <div className="brand">Company Research</div>
+        <div className="brand"><img src={logo} alt="Zawadie" />Lead Generation</div>
         <button className="primary new-research" onClick={() => go("research")}>+ New Research</button>
         <nav>
           {NAV.map(({ page: target, label, group }, index) => (
@@ -106,7 +107,7 @@ export default function App() {
         <div className="sidebar-foot">
           <div>{summary?.demo_mode ? "Demo mode" : "Live search"}</div>
           {hubUser && <div style={{ marginTop: 6, overflowWrap: "anywhere" }}>{hubUser}</div>}
-          <button className="link" style={{ color: "#8fa0bf", marginTop: 6 }} onClick={logOut}>Log out</button>
+          <button className="link" onClick={logOut}>Log out</button>
         </div>
       </aside>
 

@@ -1,6 +1,8 @@
-# Company Research
+# Lead Generation
 
 Turns a list of company names into evidence-backed lead records (website, owner, decision maker, phone, email) and adds Domain Search, Find Email by Company/Name and Email Verification, with Excel export.
+
+Shown in the hub as **Lead Generation** (it was called Company Research before). The folder, the `/company-research/` URL, the `cr_` tables and the `COMPANY_RESEARCH_*` settings keep their old names, so existing data, access and `.env` files keep working.
 
 This is the Node/TypeScript port of the original Python/FastAPI app (the `Zawadie` repo). It runs **inside the hub**: `npm start` in the hub root serves it at `/company-research/`, behind the hub's login. The API routes and JSON are the same as the Python version, so the React UI in `frontend/` is unchanged.
 

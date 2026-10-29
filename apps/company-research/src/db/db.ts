@@ -16,11 +16,11 @@ export function parseMysqlUrl(url: string) {
   try {
     u = new URL(url);
   } catch {
-    throw new Error("The Company Research database URL is not valid; expected mysql://user:password@host:3306/database");
+    throw new Error("The Lead Generation database URL is not valid; expected mysql://user:password@host:3306/database");
   }
-  if (u.protocol !== "mysql:") throw new Error(`The Company Research database URL must start with mysql:// (found ${u.protocol}//)`);
+  if (u.protocol !== "mysql:") throw new Error(`The Lead Generation database URL must start with mysql:// (found ${u.protocol}//)`);
   const database = decodeURIComponent(u.pathname.replace(/^\//, ""));
-  if (!database) throw new Error("The Company Research database URL has no database name");
+  if (!database) throw new Error("The Lead Generation database URL has no database name");
   return { host: u.hostname, port: u.port ? Number(u.port) : 3306, user: decodeURIComponent(u.username), password: decodeURIComponent(u.password), database };
 }
 

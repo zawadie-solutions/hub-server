@@ -126,7 +126,7 @@ export async function exportCompanies(companies: Company[], file: string): Promi
 
   const demoCount = companies.filter((c) => c.is_demo).length;
   const info: [string, string | number][] = [
-    ["Company Research Export", ""],
+    ["Lead Generation Export", ""],
     ["Exported", stamp()],
     ["Companies", companies.length],
     ["Owner found", companies.filter((c) => c.owner_name).length],

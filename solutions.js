@@ -55,7 +55,7 @@ module.exports = [
   },
   {
     id: 'company-research',
-    name: 'Company Research',
+    name: 'Lead Generation',
     category: 'Sales & Leads',
     description:
       'Turns a list of company names into evidence-backed lead records — website, owner, phone and email — plus domain search, email finder and verification, with Excel export.',

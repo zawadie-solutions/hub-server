@@ -1,4 +1,4 @@
-/** The Company Research web app: REST API (same routes and JSON as the original FastAPI app) plus the built UI. */
+/** The Lead Generation web app (formerly Company Research): REST API (same routes and JSON as the original FastAPI app) plus the built UI. */
 import { existsSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import express from "express";

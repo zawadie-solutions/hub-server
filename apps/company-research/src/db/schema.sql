@@ -1,4 +1,4 @@
--- Company Research tables. All prefixed cr_ so they can share the hub's database with other
+-- Lead Generation (formerly Company Research) tables. All prefixed cr_ so they can share the hub's database with other
 -- built-in solutions. Times are stored as UTC. Every statement is idempotent (run at each start).
 
 CREATE TABLE IF NOT EXISTS cr_companies (
