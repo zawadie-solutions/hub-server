@@ -38,8 +38,8 @@ export class ReviewRepo {
     if (!row) {
       await this.db.query(
         `INSERT INTO reviews (asana_task_id, asana_task_name, asana_task_url, asana_project_gid, location, month,
-           reviewer_name, rating, review_text, google_review_url, assignee_name, location_assignee_name)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+           reviewer_name, rating, review_text, google_review_url, assignee_name, location_assignee_name, asana_tagged_removed)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [
           d.asanaTaskId,
           d.asanaTaskName,
@@ -53,6 +53,7 @@ export class ReviewRepo {
           d.googleReviewUrl,
           d.assigneeName,
           d.locationAssigneeName,
+          d.taggedRemoved,
         ],
       );
       return true;
@@ -61,7 +62,7 @@ export class ReviewRepo {
     const urlChanged = row.google_review_url !== d.googleReviewUrl;
     await this.db.query(
       `UPDATE reviews SET asana_task_name=$2, asana_task_url=$3, asana_project_gid=$4, location=$5, month=$6, reviewer_name=$7,
-         rating=$8, google_review_url=$9, review_text=$10, assignee_name=$11, location_assignee_name=$12, updated_at=now(3)
+         rating=$8, google_review_url=$9, review_text=$10, assignee_name=$11, location_assignee_name=$12, asana_tagged_removed=$13, updated_at=now(3)
          ${urlChanged ? ", status='UNKNOWN', removed_at=NULL, notification_sent=false, notification_sent_at=NULL, monitoring_active=true, last_error=NULL" : ""}
        WHERE id=$1`,
       [
@@ -77,6 +78,7 @@ export class ReviewRepo {
         d.reviewText,
         d.assigneeName,
         d.locationAssigneeName,
+        d.taggedRemoved,
       ],
     );
     return false;
@@ -138,8 +140,9 @@ export class ReviewRepo {
     const where = projectGid ? `WHERE asana_project_gid = $${p.push(projectGid)}` : "";
     const r = await this.db.query<{ status: string; n: string }>(`SELECT status, COUNT(*) AS n FROM reviews ${where} GROUP BY status`, p);
     const by = Object.fromEntries(r.rows.map((x) => [x.status, Number(x.n)]));
-    const m = await this.db.query<{ last_check: Date | null; last_notified: Date | null; failing: string | null }>(
+    const m = await this.db.query<{ last_check: Date | null; last_notified: Date | null; failing: string | null; tagged: string | null }>(
       `SELECT MAX(last_checked_at) AS last_check, MAX(notification_sent_at) AS last_notified,
+              SUM(asana_tagged_removed) AS tagged,
               SUM(CASE WHEN status='REVIEW_REMOVED' AND notification_sent=false AND last_notification_error IS NOT NULL THEN 1 ELSE 0 END) AS failing
        FROM reviews ${where}`,
       p,
@@ -149,6 +152,8 @@ export class ReviewRepo {
       exists: by.REVIEW_EXISTS ?? 0,
       removed: by.REVIEW_REMOVED ?? 0,
       unknown: by.UNKNOWN ?? 0,
+      /** Tagged "Successfully removed" in Asana (counted apart: overlaps the statuses above). */
+      taggedRemoved: Number(m.rows[0]?.tagged ?? 0),
       lastCheckAt: m.rows[0]?.last_check ?? null,
       lastNotificationAt: m.rows[0]?.last_notified ?? null,
       notificationsFailing: Number(m.rows[0]?.failing ?? 0),
@@ -354,9 +359,10 @@ export class ReviewRepo {
     await this.db.query("DELETE FROM app_settings");
   }
 
+  /** Removed reviews still to alert about. Ones already tagged "Successfully removed" in Asana are left out: the team has them. */
   async pendingNotifications(): Promise<ReviewRow[]> {
     const r = await this.db.query<ReviewRow>(
-      "SELECT * FROM reviews WHERE status='REVIEW_REMOVED' AND notification_sent=false ORDER BY removed_at, id",
+      "SELECT * FROM reviews WHERE status='REVIEW_REMOVED' AND notification_sent=false AND asana_tagged_removed=false ORDER BY removed_at, id",
     );
     return r.rows;
   }

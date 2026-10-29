@@ -1,5 +1,5 @@
 import type { AsanaClient } from "../asana/client";
-import type { AsanaSettings } from "../asana/sync";
+import type { AsanaSettings, WalkProgress } from "../asana/sync";
 import { syncAsana } from "../asana/sync";
 import type { ReviewRepo } from "../db/repo";
 import { notifyPending } from "../notify/service";
@@ -56,6 +56,8 @@ export interface RunProgress {
   totalLocations: number;
   reviewsDone: number;
   reviewsTotal: number;
+  /** While syncing: how far the read of Asana has got. Null before it starts and once checking. */
+  sync: WalkProgress | null;
 }
 
 /**
@@ -92,7 +94,7 @@ export async function runMonthCheck(opts: {
   skipSyncIfSyncedWithinMs?: number;
 }): Promise<RunMonthResult> {
   const log = opts.onProgress ?? (() => {});
-  const state: RunProgress = { phase: "syncing", location: null, doneLocations: [], totalLocations: 0, reviewsDone: 0, reviewsTotal: 0, syncedMinutesAgo: null };
+  const state: RunProgress = { phase: "syncing", location: null, doneLocations: [], totalLocations: 0, reviewsDone: 0, reviewsTotal: 0, syncedMinutesAgo: null, sync: null };
   const emit = () => opts.onState?.({ ...state, doneLocations: [...state.doneLocations] });
   emit();
 
@@ -114,7 +116,18 @@ export async function runMonthCheck(opts: {
   let sync = { tasksScanned: 0, reviewsFound: stored?.length ?? 0 };
   if (!stored) {
     log("Syncing...");
-    const fresh = await syncAsana(opts.client, opts.repo, { ...opts.asanaSettings, projectGid: opts.projectGid });
+    // Asana answers in bursts, so the dashboard is told at most twice a second.
+    let lastEmit = 0;
+    const fresh = await syncAsana(opts.client, opts.repo, { ...opts.asanaSettings, projectGid: opts.projectGid }, {
+      onProgress: (p) => {
+        state.sync = p;
+        const now = Date.now();
+        if (now - lastEmit >= 500 || p.done === p.total) {
+          lastEmit = now;
+          emit();
+        }
+      },
+    });
     log(`Synced ${fresh.reviewsFound} review tasks (${fresh.created} new).`);
     sync = fresh;
     await opts.repo.markSynced(opts.projectGid);
@@ -142,6 +155,7 @@ export async function runMonthCheck(opts: {
   let cancelled = false;
   await prepareChecker(opts.checker, rows);
   state.phase = "checking";
+  state.sync = null;
   state.reviewsTotal = rows.length;
   state.totalLocations = new Set(rows.map((r) => r.location)).size;
   for (const [i, row] of rows.entries()) {

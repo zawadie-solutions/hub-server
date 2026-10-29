@@ -9,7 +9,17 @@ export type AsanaSource = Pick<AsanaClient, "sections" | "sectionTasks" | "subta
 export type AsanaSettings = Pick<
   AsanaConfig,
   "projectGid" | "monthIndex" | "locationIndex" | "maxDepth" | "includeCompleted" | "reviewerFromTitle"
->;
+> & {
+  /** Use this as every review's month label instead of reading it from the task path (Legacy projects have no month task). */
+  monthLabel?: string;
+};
+
+/** How far a walk of Asana has got: `done` of the `total` tasks with subtasks found so far have been opened. */
+export interface WalkProgress {
+  scanned: number;
+  done: number;
+  total: number;
+}
 
 export interface WalkedTask {
   task: AsanaTask;
@@ -20,11 +30,14 @@ export interface WalkedTask {
 }
 
 /** Runs `fn` over `items` with at most `limit` calls in flight at once. */
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>, onEach?: () => void): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let next = 0;
   const worker = async () => {
-    for (let i = next++; i < items.length; i = next++) results[i] = await fn(items[i]);
+    for (let i = next++; i < items.length; i = next++) {
+      results[i] = await fn(items[i]);
+      onEach?.();
+    }
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return results;
@@ -39,20 +52,32 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 export async function walkProject(
   client: AsanaSource,
   s: AsanaSettings,
-  opts: { concurrency?: number; onProgress?: (scanned: number) => void } = {},
+  opts: { concurrency?: number; onProgress?: (p: WalkProgress) => void } = {},
 ): Promise<WalkedTask[]> {
   const concurrency = opts.concurrency ?? 8;
   const out: WalkedTask[] = [];
+  // Every task with subtasks costs one more Asana call, so "opened of found" is how far along the walk is.
+  let done = 0;
+  let total = 0;
+  const report = () => opts.onProgress?.({ scanned: out.length, done, total });
 
   const who = (t: AsanaTask) => t.assignee?.name?.trim() || null;
   const expand = async (level: WalkedTask[], depth: number): Promise<void> => {
     for (const item of level) out.push(item);
-    opts.onProgress?.(out.length);
-    if (depth >= s.maxDepth) return;
+    if (depth >= s.maxDepth) return report();
     const expandable = level.filter((t) => (t.task.num_subtasks ?? 0) > 0);
+    total += expandable.length;
+    report();
     if (!expandable.length) return;
-    const childLevels = await mapLimit(expandable, concurrency, async ({ task, path, assignees }) =>
-      (await client.subtasks(task.gid)).map((sub) => ({ task: sub, path: [...path, sub.name], assignees: [...assignees, who(sub)] })),
+    const childLevels = await mapLimit(
+      expandable,
+      concurrency,
+      async ({ task, path, assignees }) =>
+        (await client.subtasks(task.gid)).map((sub) => ({ task: sub, path: [...path, sub.name], assignees: [...assignees, who(sub)] })),
+      () => {
+        done++;
+        report();
+      },
     );
     await expand(childLevels.flat(), depth + 1);
   };
@@ -67,6 +92,10 @@ export async function walkProject(
   return out;
 }
 
+/** The Asana tag the team puts on a dispute once they have confirmed the review is gone. */
+export const REMOVED_TAG = "successfully removed";
+const hasRemovedTag = (t: AsanaTask) => (t.tags ?? []).some((x) => x.name?.trim().toLowerCase() === REMOVED_TAG);
+
 /** Any task whose description holds a Google review link is a review task. */
 export function toDiscovered(w: WalkedTask, s: AsanaSettings): DiscoveredReview | null {
   const { task, path, assignees } = w;
@@ -80,7 +109,7 @@ export function toDiscovered(w: WalkedTask, s: AsanaSettings): DiscoveredReview 
     asanaTaskName: task.name,
     asanaTaskUrl: task.permalink_url ?? `https://app.asana.com/0/0/${task.gid}`,
     asanaProjectGid: s.projectGid,
-    month: path[s.monthIndex] && s.monthIndex < path.length - 1 ? path[s.monthIndex] : (ancestors[0] ?? null),
+    month: s.monthLabel ?? (path[s.monthIndex] && s.monthIndex < path.length - 1 ? path[s.monthIndex] : (ancestors[0] ?? null)),
     location:
       path[s.locationIndex] && s.locationIndex < path.length - 1
         ? path[s.locationIndex]
@@ -91,6 +120,7 @@ export function toDiscovered(w: WalkedTask, s: AsanaSettings): DiscoveredReview 
     rating: parseRating(task.notes),
     reviewText: parseReviewText(task.notes),
     googleReviewUrl: url,
+    taggedRemoved: hasRemovedTag(task),
   };
 }
 
@@ -106,13 +136,19 @@ export interface SyncSummary {
  * Read everything from Asana first, then write. If Asana fails midway, an exception
  * propagates before any DB write, so existing records stay exactly as they were.
  */
-export async function syncAsana(client: AsanaSource, repo: ReviewRepo, s: AsanaSettings): Promise<SyncSummary> {
+export async function syncAsana(
+  client: AsanaSource,
+  repo: ReviewRepo,
+  s: AsanaSettings,
+  opts: { onProgress?: (p: WalkProgress) => void } = {},
+): Promise<SyncSummary> {
   let lastLogged = 0;
   const walked = await walkProject(client, s, {
-    onProgress: (scanned) => {
-      if (scanned - lastLogged >= 200) {
-        lastLogged = scanned;
-        logger.info({ scanned }, "asana walk in progress");
+    onProgress: (p) => {
+      opts.onProgress?.(p);
+      if (p.scanned - lastLogged >= 200) {
+        lastLogged = p.scanned;
+        logger.info({ scanned: p.scanned }, "asana walk in progress");
       }
     },
   });

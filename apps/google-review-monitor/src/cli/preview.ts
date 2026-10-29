@@ -45,6 +45,7 @@ for (const [i, name] of people.entries()) {
     rating: (i % 5) + 1,
     reviewText: texts[i],
     googleReviewUrl: `https://www.google.com/maps/reviews/data=!4m8!${i}`,
+    taggedRemoved: false,
   });
 }
 

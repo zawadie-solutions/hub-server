@@ -43,6 +43,8 @@ export interface DiscoveredReview {
   rating: number | null;
   reviewText: string | null;
   googleReviewUrl: string;
+  /** Already tagged "Successfully removed" in Asana, so the team knows: never alert about it. */
+  taggedRemoved: boolean;
 }
 
 export interface ReviewRow {
@@ -73,6 +75,8 @@ export interface ReviewRow {
   assignee_name: string | null;
   /** Who the location's task is assigned to in Asana (null if nobody). */
   location_assignee_name: string | null;
+  /** Tagged "Successfully removed" in Asana as of the last sync. */
+  asana_tagged_removed: boolean;
 }
 
 /** The person working on a dispute: its own assignee, else whoever has the location. */

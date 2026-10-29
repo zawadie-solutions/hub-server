@@ -107,14 +107,57 @@ describe("who is working on a dispute (from Asana)", () => {
     expect((await repo.all()).find((r) => r.asana_task_id === "a2")?.location_assignee_name).toBe("Omar Haddad");
   });
 
-  it("the removal alert names who is working on each dispute", async () => {
+  it("the removal alert shows only location, reviewer and Google link: no agent, rating or task link", async () => {
     const { repo } = await makeRepo();
     await syncAsana(people, repo, settings);
     const msg = buildRemovalMessage(await repo.all());
-    expect(msg.text).toContain("Worked on by: Priya Nair");
-    expect(msg.text).toContain("Worked on by: Lena Fischer");
-    expect(msg.text).toContain("Worked on by: nobody assigned in Asana");
-    expect(msg.html).toContain("<b>Worked on by:</b> Priya Nair");
+    expect(msg.text).toContain("Location: Location A\nReviewer: R1\nGoogle review: https://maps.app.goo.gl/abc1");
+    for (const body of [msg.text, msg.html]) {
+      for (const gone of ["Worked on by", "Priya Nair", "Lena Fischer", "Rating", "Asana task", "app.asana.com"]) expect(body).not.toContain(gone);
+    }
+  });
+});
+
+describe('reviews already tagged "Successfully removed" in Asana', () => {
+  const tagged = fakeAsana([
+    {
+      month: "October",
+      location: "Location A",
+      reviews: [
+        { gid: "t1", name: "t1", notes: link(1), tags: ["Successfully removed"] },
+        { gid: "t2", name: "t2", notes: link(2), tags: ["Not removed"] },
+        { gid: "t3", name: "t3", notes: link(3) },
+      ],
+    },
+  ]) as unknown as AsanaClient;
+
+  it("sync records the tag, and a re-sync picks up a newly added one", async () => {
+    const { repo } = await makeRepo();
+    await syncAsana(tagged, repo, settings);
+    const by = new Map((await repo.all()).map((r) => [r.asana_task_id, !!r.asana_tagged_removed]));
+    expect([by.get("t1"), by.get("t2"), by.get("t3")]).toEqual([true, false, false]);
+
+    const later = fakeAsana([{ month: "October", location: "Location A", reviews: [{ gid: "t3", name: "t3", notes: link(3), tags: ["successfully removed "] }] }]) as unknown as AsanaClient;
+    await syncAsana(later, repo, settings);
+    expect(!!(await repo.all()).find((r) => r.asana_task_id === "t3")?.asana_tagged_removed).toBe(true);
+  });
+
+  it("are never sent in a removal alert, even when found removed", async () => {
+    const { repo, notifier, result } = await run({ client: tagged, checker: fakeChecker(REMOVED) });
+    expect(result).toMatchObject({ removed: 3, notified: true });
+    expect(notifier.send).toHaveBeenCalledTimes(1);
+    const sent = (notifier.send.mock.calls[0] as unknown as [{ text: string }])[0].text;
+    expect(sent).toContain("Reviewer: R2");
+    expect(sent).toContain("Reviewer: R3");
+    expect(sent).not.toContain("Reviewer: R1");
+    expect((await repo.pendingNotifications()).length).toBe(0);
+  });
+
+  it("a run where every removal is already tagged sends nothing", async () => {
+    const allTagged = fakeAsana([{ month: "October", location: "Location A", reviews: [{ gid: "t1", name: "t1", notes: link(1), tags: ["Successfully removed"] }] }]) as unknown as AsanaClient;
+    const { notifier, result } = await run({ client: allTagged, checker: fakeChecker(REMOVED) });
+    expect(result).toMatchObject({ removed: 1, notified: false });
+    expect(notifier.send).not.toHaveBeenCalled();
   });
 });
 

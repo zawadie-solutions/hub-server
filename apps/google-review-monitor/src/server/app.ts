@@ -30,6 +30,39 @@ function safeEqual(a: string, b: string): boolean {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
+const LEGACY_QUERY = "Legacy Monthly Disputes";
+const isLegacyProject = (name: string) => /legacy monthly disputes/i.test(name);
+
+/**
+ * Legacy projects go section > dealership > dispute, with no month task, so the month is
+ * labelled with the project's own name. (The location falls back to the dispute's parent.)
+ */
+export function settingsFor(base: AsanaSettings, projectName: string): AsanaSettings {
+  return isLegacyProject(projectName) ? { ...base, monthLabel: projectName.trim() } : base;
+}
+
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+
+/**
+ * Orders month projects newest first. Names vary ("October Managed Disputes 2026",
+ * "Managed Disputes V2 2025 June", "May_2025 Legacy Monthly Disputes"), so the month word and
+ * year are found anywhere in the name. Within a month, Managed comes before Legacy. Projects
+ * without both (e.g. "Managed Disputes Cancellations") go last, alphabetically.
+ */
+export function byMonthNewestFirst(a: { name: string }, b: { name: string }): number {
+  // Letter/digit lookarounds rather than \b, which treats "_" as part of a word ("May_2025").
+  const key = (name: string) => {
+    const year = name.match(/(?<!\d)(20\d{2})(?!\d)/)?.[1];
+    const month = MONTHS.findIndex((m) => new RegExp(`(?<![a-z])${m}(?![a-z])`, "i").test(name));
+    return year && month >= 0 ? Number(year) * 12 + month : null;
+  };
+  const ka = key(a.name), kb = key(b.name);
+  if (ka !== null && kb !== null && ka !== kb) return kb - ka;
+  if (ka === null && kb !== null) return 1;
+  if (ka !== null && kb === null) return -1;
+  return Number(isLegacyProject(a.name)) - Number(isLegacyProject(b.name)) || a.name.trim().localeCompare(b.name.trim());
+}
+
 /** Enables the month picker + "Run now" button. Omit to run dashboard-only (e.g. the demo preview). */
 export interface MonthRunnerOpts {
   client: AsanaClient;
@@ -272,7 +305,8 @@ export function createApp(opts: {
     }),
   );
 
-  // Every "<Month> Managed Disputes <Year>" project Asana knows about, synced or not, with run status.
+  // Every "<Month> Managed Disputes <Year>" and "<Month> <Year> Legacy Monthly Disputes" project
+  // Asana knows about, synced or not, with run status. `legacy` marks the second kind.
   let workspaceGid: string | undefined;
   app.get(
     "/api/available-months",
@@ -280,15 +314,22 @@ export function createApp(opts: {
       if (!opts.monthRunner) return [];
       const { client, asanaSettings } = opts.monthRunner;
       workspaceGid ??= await client.projectWorkspace(asanaSettings.projectGid);
-      const [found, known] = await Promise.all([client.searchProjects(workspaceGid, "Managed Disputes"), opts.repo.listAsanaProjects()]);
+      const [managed, legacy, known] = await Promise.all([
+        client.searchProjects(workspaceGid, "Managed Disputes"),
+        client.searchProjects(workspaceGid, LEGACY_QUERY),
+        opts.repo.listAsanaProjects(),
+      ]);
       const knownByGid = new Map(known.map((k) => [k.project_gid, k]));
-      return found
+      const found = new Map([...managed, ...legacy].map((p) => [p.gid, p]));
+      return [...found.values()]
         .filter((p) => !p.archived && !/template/i.test(p.name))
+        .sort(byMonthNewestFirst)
         .map((p) => {
           const k = knownByGid.get(p.gid);
           return {
             projectGid: p.gid,
             name: p.name,
+            legacy: isLegacyProject(p.name),
             lastSyncedAt: k?.last_synced_at ?? null,
             lastReviewCount: k?.last_review_count ?? null,
             runStatus: k?.run_status ?? "idle",
@@ -377,7 +418,7 @@ export function createApp(opts: {
           const result = await runMonthCheck({
             projectGid,
             client: runner.client,
-            asanaSettings: runner.asanaSettings,
+            asanaSettings: settingsFor(runner.asanaSettings, month),
             repo: opts.repo,
             checker,
             notifier,
@@ -433,7 +474,7 @@ export function createApp(opts: {
           const result = await runMonthCheck({
             projectGid,
             client: runner.client,
-            asanaSettings: runner.asanaSettings,
+            asanaSettings: settingsFor(runner.asanaSettings, month),
             repo: opts.repo,
             checker: null, // sync only
             notifier: null,

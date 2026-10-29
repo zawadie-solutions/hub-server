@@ -86,6 +86,7 @@ export async function migrate(db: Db): Promise<void> {
 const ADDED_COLUMNS: [table: string, column: string, type: string][] = [
   ["reviews", "assignee_name", "VARCHAR(255)"],
   ["reviews", "location_assignee_name", "VARCHAR(255)"],
+  ["reviews", "asana_tagged_removed", "TINYINT(1) NOT NULL DEFAULT 0"],
 ];
 
 async function ensureColumn(db: Db, table: string, column: string, type: string): Promise<void> {
