@@ -24,7 +24,7 @@ app.use((err, req, res, next) => {
   // "your access code is wrong" and sign the person out. Report it as an upstream problem with a message they can act on.
   if (err instanceof OpenAI.APIError) {
     const error = err.status === 401
-      ? 'The AI service rejected the server\'s OpenAI key. An admin needs to update OPENAI_API_KEY and restart the app.'
+      ? 'The AI service rejected the server\'s OpenAI key. An admin needs to update BAM_OPENAI_API_KEY (or OPENAI_API_KEY) and restart the app.'
       : err.status === 429
         ? 'The AI service is busy or out of credit right now. Please try again in a few minutes.'
         : 'The AI service could not be reached. Please try again.';

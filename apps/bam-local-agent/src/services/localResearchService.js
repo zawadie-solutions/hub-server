@@ -7,7 +7,7 @@
 // scripts/runResearch.js every few minutes, which claims pending stores one at a time and writes the results.
 // stores.research_status: none -> pending -> running -> done | failed. The admin UI polls it.
 import pool from '../config/db.js';
-import { openai, CHAT_MODEL } from '../config/openai.js';
+import { openai, CHAT_MODEL, OPENAI_API_KEY } from '../config/openai.js';
 import { generateEmbeddings } from './ragService.js';
 import { withTimeout } from '../utils/timeout.js';
 
@@ -231,7 +231,7 @@ export async function queueResearch(locationId) {
  * alone so nothing retries in a loop. Set AUTO_RESEARCH_REFRESH=off to disable. Returns how many were queued.
  */
 export async function queueStaleResearch(max = 10) {
-  if (/^(off|false|0|no)$/i.test(process.env.AUTO_RESEARCH_REFRESH || '') || !process.env.OPENAI_API_KEY) return 0;
+  if (/^(off|false|0|no)$/i.test(process.env.AUTO_RESEARCH_REFRESH || '') || !OPENAI_API_KEY) return 0;
   const [res] = await pool.execute(
     `UPDATE stores SET research_status = 'pending', research_error = NULL, research_queued_at = NOW()
       WHERE research_status = 'done' AND researched_at IS NOT NULL

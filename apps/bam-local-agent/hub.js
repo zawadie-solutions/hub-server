@@ -16,6 +16,9 @@ function loadOwnSettings() {
   if (!fs.existsSync(file)) return;
   const own = dotenv.parse(fs.readFileSync(file));
   for (const key of OWN_SETTINGS) if (!process.env[key] && own[key]) process.env[key] = own[key];
+  // The hub's OPENAI_API_KEY belongs to the hub and its other apps, so this app's own key goes in under its own name
+  // (read first by src/config/openai.js) instead of replacing it.
+  if (!process.env.BAM_OPENAI_API_KEY && own.OPENAI_API_KEY) process.env.BAM_OPENAI_API_KEY = own.OPENAI_API_KEY;
 }
 
 export async function createSolution() {
