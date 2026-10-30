@@ -55,6 +55,14 @@ export async function getStoreProfile(locationId) {
 /* ---------- Retrieval ---------- */
 
 /**
+ * SQL condition for chunks the AI may use. Local entries written by the automatic research (metadata.source =
+ * 'auto-research', see localResearchService.js) count only after a person marks them reviewed in Settings; entries
+ * added by hand and the shared playbook chunks always count. Undoing a review (JSON_REMOVE) takes an entry out again.
+ */
+export const USABLE_CHUNK_SQL =
+  "(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.source')), '') <> 'auto-research' OR JSON_EXTRACT(metadata, '$.reviewed_at') IS NOT NULL)";
+
+/**
  * Returns chunks tagged kind = 'local' (this store's own data), 'facts' (verified playbook key facts)
  * or 'excerpt' (raw playbook PDF text). Slots are reserved for local data and key facts because the long
  * raw excerpts otherwise outrank them in plain similarity ranking.
@@ -63,7 +71,7 @@ export async function findRelevantContext(queryVector, locationId, topK = 14, { 
   const [rows] = await pool.execute(
     `SELECT id, location_id, chunk_type, content, metadata, embedding, quarter
        FROM knowledge_chunks
-      WHERE is_active = 1 AND (location_id = ? OR location_id IS NULL)`,
+      WHERE is_active = 1 AND (location_id = ? OR location_id IS NULL) AND ${USABLE_CHUNK_SQL}`,
     [locationId]
   );
   const scored = rows.map((r) => {

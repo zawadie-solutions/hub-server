@@ -117,9 +117,11 @@
     const el = $('#storeDetail'); el.className = 'store-detail small';
     if (!s) { el.textContent = ''; return; }
     const where = [s.address, `${s.city}, ${s.state}${s.zip ? ` ${s.zip}` : ''}`].filter(Boolean).join(' · ');
+    // AI-researched facts are only used once someone reviews them in Settings, so those are counted separately.
+    const waiting = s.awaiting_review ? ` · ${s.awaiting_review} AI ${s.awaiting_review === 1 ? 'fact' : 'facts'} waiting for review in Settings` : '';
     if (s.research_status === 'running' || s.research_status === 'pending') { el.classList.add('is-warn'); el.textContent = `${where}. Still gathering local info for this store; plans get richer once it finishes.`; }
-    else if (!s.knowledge_count) { el.classList.add('is-warn'); el.textContent = `${where}. No local info saved for this store yet, so plans will lean on the playbook only.`; }
-    else el.textContent = `${where} · ${s.knowledge_count} local facts on file`;
+    else if (!s.knowledge_count) { el.classList.add('is-warn'); el.textContent = `${where}. No reviewed local info for this store yet, so plans will lean on the playbook only${waiting}.`; }
+    else el.textContent = `${where} · ${s.knowledge_count} local facts in use${waiting}`;
   }
   $('#storeSelect').addEventListener('change', () => { showError($('#storeError'), '', $('#storeSelect')); local.set('bam_store', selectedStore()); showStoreDetail(); });
   const SUGGESTIONS = [

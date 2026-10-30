@@ -54,11 +54,12 @@ pageRouter.use((req, res, next) => {
   next();
 });
 pageRouter.use(express.static(publicDir, { index: false, maxAge: 0, etag: true, setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
-pageRouter.get(['/', '/admin'], (req, res) => {                                                    // admin portal
-  // A hub user who has this project but isn't a hub admin can only use the planner: take them straight there
-  // instead of an admin-key prompt they have no key for. ('ask' resolves next to both / and /admin.)
+pageRouter.get('/', (req, res) => res.redirect('ask'));                                              // everyone lands on the planner (Home)
+pageRouter.get('/ask', (req, res) => res.sendFile(path.join(publicDir, 'ask.html')));                // marketing planner (Home)
+pageRouter.get('/admin', (req, res) => {                                                             // Settings (admin portal)
+  // A hub user who has this project but isn't a hub admin can only use the planner: send them back to it
+  // instead of showing an admin-key prompt they have no key for.
   const hub = sessionInfo(req);
   if (hub.canPlan && !hub.canAdmin) return res.redirect('ask');
   res.sendFile(path.join(publicDir, 'index.html'));
 });
-pageRouter.get('/ask', (req, res) => res.sendFile(path.join(publicDir, 'ask.html')));                // marketing planner

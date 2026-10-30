@@ -438,7 +438,7 @@
         const ai = s.chunks.filter((c) => c.auto), seen = ai.filter((c) => c.reviewed_at).length;
         return h('div', { class: 'research research--done' },
           h('div', {}, h('strong', { text: 'Researched automatically' }),
-            h('p', { class: 'small', text: `${s.researched_at ? `${fmtDate(s.researched_at)}. ` : ''}${ai.length ? `${seen} of ${ai.length} AI entries checked by a person. ` : ''}Check the sources under each AI entry and mark it reviewed. Re-running replaces the AI entries (reviewed ones too) and keeps yours.` })),
+            h('p', { class: 'small', text: `${s.researched_at ? `${fmtDate(s.researched_at)}. ` : ''}${ai.length ? `${seen} of ${ai.length} AI entries reviewed. ` : ''}The agent only uses an AI entry after it is marked reviewed; entries you add by hand are used straight away. Re-running replaces the AI entries (reviewed ones too, so they need reviewing again) and keeps yours.` })),
           again('Re-run research', 'Replaces the AI-researched entries; entries you added by hand are kept'));
       }
       default:
@@ -539,7 +539,7 @@
       } catch (err) { btn.disabled = false; if (err.status !== 401) toast(`Could not update: ${err.message}`, 'error', 6000); }
     });
     return h('div', { class: 'kmeta' }, src,
-      h('span', { class: reviewed ? 'kmeta__ok' : 'kmeta__todo' }, reviewed ? `Reviewed by ${c.reviewed_by || 'someone'} · ${fmtDate(c.reviewed_at)}` : 'Not reviewed yet', ' ', btn));
+      h('span', { class: reviewed ? 'kmeta__ok' : 'kmeta__todo' }, reviewed ? `Reviewed by ${c.reviewed_by || 'someone'} · ${fmtDate(c.reviewed_at)} · used in answers` : 'Not reviewed yet · not used in answers', ' ', btn));
   }
 
   async function removeChunk(s, chunk) {
@@ -690,6 +690,6 @@
         toast(err.message, 'error', 8000);
         $('#storePanel').replaceChildren(h('p', { class: 'empty', text: 'Could not load data. Refresh to try again.' }));
       });
-    } else openAuth(hub.sso ? 'Your hub account can use the Marketing Planner. The admin portal needs the admin key.' : undefined);
+    } else openAuth(hub.sso ? 'Your hub account can use the Marketing Planner. Settings needs the admin key.' : undefined);
   })();
 })();

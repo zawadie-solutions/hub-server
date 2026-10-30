@@ -1,5 +1,6 @@
 import pool from '../config/db.js';
 import { generateLocalizedResult, INTENTS, piecesText, replyText } from '../services/assistantService.js';
+import { USABLE_CHUNK_SQL } from '../services/ragService.js';
 import { eventPlanBlocks, eventPlanText } from '../utils/slackFormatter.js';
 import { storeExists, listStores } from '../services/storeService.js';
 import { effectiveStatus, workerActive } from '../services/localResearchService.js';
@@ -9,9 +10,11 @@ import { hit } from '../utils/rateLimit.js';
 /** Stores and the active playbook label for the planner's store picker. */
 export async function askMeta(req, res, next) {
   try {
+    // knowledge_count: local facts the AI actually uses; awaiting_review: AI-researched facts not used until reviewed.
     const [extra] = await pool.execute(
       `SELECT s.location_id, s.research_status,
-              (SELECT COUNT(*) FROM knowledge_chunks c WHERE c.location_id = s.location_id AND c.is_active = 1) AS knowledge_count
+              (SELECT COUNT(*) FROM knowledge_chunks c WHERE c.location_id = s.location_id AND c.is_active = 1 AND ${USABLE_CHUNK_SQL}) AS knowledge_count,
+              (SELECT COUNT(*) FROM knowledge_chunks c WHERE c.location_id = s.location_id AND c.is_active = 1 AND NOT ${USABLE_CHUNK_SQL}) AS awaiting_review
          FROM stores s`
     );
     const active = await workerActive();
@@ -20,6 +23,7 @@ export async function askMeta(req, res, next) {
       return {
         location_id, name, address, city, state, zip,
         knowledge_count: Number(e?.knowledge_count ?? 0),
+        awaiting_review: Number(e?.awaiting_review ?? 0),
         research_status: e ? effectiveStatus(e, active) : 'none'
       };
     });
