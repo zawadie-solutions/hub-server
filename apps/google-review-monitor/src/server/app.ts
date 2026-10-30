@@ -314,12 +314,14 @@ export function createApp(opts: {
       if (!opts.monthRunner) return [];
       const { client, asanaSettings } = opts.monthRunner;
       workspaceGid ??= await client.projectWorkspace(asanaSettings.projectGid);
-      const [managed, legacy, known] = await Promise.all([
+      const [managed, legacy, known, stored] = await Promise.all([
         client.searchProjects(workspaceGid, "Managed Disputes"),
         client.searchProjects(workspaceGid, LEGACY_QUERY),
         opts.repo.listAsanaProjects(),
+        opts.repo.distinctProjects(),
       ]);
       const knownByGid = new Map(known.map((k) => [k.project_gid, k]));
+      const disputesByGid = new Map(stored.map((x) => [x.projectGid, x.count]));
       const found = new Map([...managed, ...legacy].map((p) => [p.gid, p]));
       return [...found.values()]
         .filter((p) => !p.archived && !/template/i.test(p.name))
@@ -332,6 +334,8 @@ export function createApp(opts: {
             legacy: isLegacyProject(p.name),
             lastSyncedAt: k?.last_synced_at ?? null,
             lastReviewCount: k?.last_review_count ?? null,
+            // Disputes stored from the month's last sync; 0 when it has never been synced.
+            disputes: disputesByGid.get(p.gid) ?? 0,
             runStatus: k?.run_status ?? "idle",
             lastRunError: k?.last_run_error ?? null,
           };

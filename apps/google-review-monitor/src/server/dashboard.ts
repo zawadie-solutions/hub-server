@@ -305,13 +305,15 @@ export const dashboardHtml = `<!doctype html>
   :root[data-theme="dark"]{--ring-all:#F0336F;--ring-managed:#3987e5;--ring-legacy:#d95926}
   .chart{padding:20px 22px;display:flex;flex-direction:column;gap:16px;min-width:0}
   .chart .cap{font-size:12.5px;font-weight:500;color:var(--muted)}
-  .mstats{display:flex;gap:28px;flex-wrap:wrap;margin-top:2px}
+  .chart .big{font-size:32px;font-weight:700;line-height:1.15;letter-spacing:-.02em;margin-top:2px;font-variant-numeric:tabular-nums}
+  .chart .from{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .mstats{display:flex;gap:28px;flex-wrap:wrap;padding-top:14px;border-top:1px solid var(--border)}
   .mstats .n{font-size:24px;font-weight:700;line-height:1.15;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
   .mstats .k{font-size:12.5px;color:var(--muted)}
   .rings{display:flex;align-items:center;gap:24px;flex-wrap:wrap}
   .rings svg{flex:none;width:156px;height:156px;overflow:visible}
   .rings .track{fill:none;stroke:var(--hover)}
-  .rings .arc{fill:none;stroke-linecap:round;transition:stroke-dashoffset .6s ease,opacity .15s}
+  .rings .arc{fill:none;stroke-linecap:round;transition:stroke-dashoffset .9s cubic-bezier(.22,1,.36,1),opacity .15s}
   .rings .hit{fill:none;stroke:transparent;cursor:default}
   .rings .mid{font-size:22px;font-weight:700;fill:var(--text);text-anchor:middle;font-variant-numeric:tabular-nums}
   .rings .mid-sub{font-size:11px;font-weight:500;fill:var(--muted);text-anchor:middle}
@@ -812,16 +814,38 @@ function pickDefaultProject(list){
   return (synced[0]||list[0]).projectGid;
 }
 
-/** The stats card's right half: all / synced / not synced months, and one ring per kind filled to its synced share. */
+// Numbers count up to their new value. The last value shown is kept per number, so the
+// 60-second refresh only animates what changed, not everything from 0 again.
+const reduceMotion=matchMedia('(prefers-reduced-motion:reduce)');
+const shownValue={};
+function countTo(node,key,to){
+  const from=shownValue[key]??0;shownValue[key]=to;
+  if(from===to||reduceMotion.matches){node.textContent=to.toLocaleString();return}
+  const t0=performance.now(), ms=1100;
+  const step=t=>{
+    if(!node.isConnected)return;
+    // A frame's timestamp can be a little before t0, which would otherwise start below the old value.
+    const k=Math.min(1,Math.max(0,(t-t0)/ms)), eased=1-Math.pow(1-k,3);
+    node.textContent=Math.round(from+(to-from)*eased).toLocaleString();
+    if(k<1)requestAnimationFrame(step);
+  };
+  node.textContent=from.toLocaleString();requestAnimationFrame(step);
+}
+
+/** The stats card's right half: disputes synced, all / synced / not synced months, and one ring per kind filled to its synced share. */
 function renderMonthRings(){
   const box=$('chart');box.replaceChildren();
   const all=availableMonths, synced=m=>!!m.lastSyncedAt;
   if(!all.length)return;
   const done=all.filter(synced).length;
-  box.append(el('div','Months in Asana','cap'));
+  const disputes=all.filter(synced).reduce((n,m)=>n+(m.disputes||0),0);
+  const big=el('div',null,'big');
+  box.append(el('div','Disputes synced from Asana','cap'),big,
+    el('div','Across all locations in '+done+' synced month'+(done===1?'':'s'),'from'));
+  countTo(big,'disputes',disputes);
   const stats=el('div',null,'mstats');
   for(const [k,v] of [['All months',all.length],['Synced',done],['Not synced',all.length-done]]){
-    const s=el('div');s.append(el('div',v.toLocaleString(),'n'),el('div',k,'k'));stats.append(s);
+    const n=el('div',null,'n'), s=el('div');s.append(n,el('div',k,'k'));stats.append(s);countTo(n,'months.'+k,v);
   }
   box.append(stats);
 
@@ -846,9 +870,12 @@ function renderMonthRings(){
     const g=node('g',{transform:'rotate(-90 '+C+' '+C+')'});
     g.append(node('circle',{cx:C,cy:C,r:rad,class:'track','stroke-width':W}));
     // A round cap would draw a dot at 0%, so an empty ring has no arc at all.
+    // The ring sweeps from where it was last shown (empty the first time) to its new share.
     if(r.done){
-      r.arc=node('circle',{cx:C,cy:C,r:rad,class:'arc',stroke:colour,'stroke-width':W,'stroke-dasharray':len,'stroke-dashoffset':len*(1-r.done/r.total)});
+      const was=shownValue['ring.'+r.id]??0, now=r.done/r.total;shownValue['ring.'+r.id]=now;
+      r.arc=node('circle',{cx:C,cy:C,r:rad,class:'arc',stroke:colour,'stroke-width':W,'stroke-dasharray':len,'stroke-dashoffset':len*(1-was)});
       g.append(r.arc);
+      if(was!==now)requestAnimationFrame(()=>requestAnimationFrame(()=>r.arc.setAttribute('stroke-dashoffset',len*(1-now))));
     }
     const hit=node('circle',{cx:C,cy:C,r:rad,class:'hit','stroke-width':W+GAP});
     hit.append(node('title',{}));hit.firstChild.textContent=r.label+': '+r.done+' of '+r.total+' synced';
@@ -1015,7 +1042,9 @@ async function loadSummary(){
   const s=await api(withProject('api/summary'));
   monthTotal=s.monitored;renderRunOptions();
   const st=$('stats');st.replaceChildren();
-  st.append(el('div','Reviews monitored','cap'),el('div',s.monitored.toLocaleString(),'big'));
+  const big=el('div',null,'big');
+  st.append(el('div','Reviews monitored','cap'),big);
+  countTo(big,'monitored',s.monitored);
   const rows=el('div',null,'rows');
   for(const [k,v,c] of [['Still available',s.exists,'green'],['Removed',s.removed,'red'+(s.removed?' hot':'')],['Could not be checked',s.unknown,''],['Removed in Asana',s.taggedRemoved,'asana']]){
     const line=el('div',null,'line '+c);
