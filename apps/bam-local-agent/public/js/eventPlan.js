@@ -25,7 +25,7 @@ window.BAMEventPlan = (() => {
     h('section', { class: `ep-sec${wide ? ' ep-sec--wide' : ''}` }, h('h3', { class: 'ep-sec__title', text: title }), ...kids);
   const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'event-plan';
 
-  function body(res) {
+  function body(res, toast) {
     const p = res.plan, s = res.store;
     return h('div', { class: 'ep' },
       h('header', { class: 'ep-hero' },
@@ -52,7 +52,11 @@ window.BAMEventPlan = (() => {
       p.store_action_items.length && sec('Action items needed from store', true,
         h('ul', { class: 'ep-checks' }, p.store_action_items.map((a) => h('li', {}, h('span', { class: 'ep-box', 'aria-hidden': 'true' }), h('span', {}, rich(a.task)),
           h('span', { class: 'ep-owner' }, rich(a.owner), ' · due ', rich(a.due)))))),
-      p.open_items.length && h('div', { class: 'callout ep-open' }, h('strong', {}, 'To confirm before publishing'), list(p.open_items)));
+      p.open_items.length && h('div', { class: 'callout ep-open' }, h('strong', {}, 'To confirm before publishing'), list(p.open_items)),
+      // Writing asked for alongside the plan ("...include a partner email draft"), written from this plan.
+      res.pieces?.length && h('section', { class: 'ep-drafts' },
+        h('h3', { class: 'ep-sec__title', text: res.pieces.length > 1 ? 'Drafts for this event' : 'Draft for this event' }),
+        window.BAMResults.pieceList(res.pieces, res.notes, { toast })));
   }
 
   /** Prints only the plan: a copy goes into #printRoot and the print stylesheet hides everything else. */
@@ -73,9 +77,10 @@ window.BAMEventPlan = (() => {
 
   /**
    * Card for an event plan response ({ plan, text, store, playbook, slack? } from the API).
-   * opts: { meta: header text, toast(msg, type, ms), regenerate(), extra: element appended under the plan (admin context) }.
+   * opts: { meta: header text, toast(msg, type, ms), regenerate(), extra: element appended under the plan (admin context),
+   * onFollowUp(text): asks a suggested next request }.
    */
-  function render(res, { meta, toast, regenerate, extra } = {}) {
+  function render(res, { meta, toast, regenerate, extra, onFollowUp } = {}) {
     if (!res.plan) {
       return h('article', { class: 'result' }, h('div', { class: 'result__head' }, h('span', { class: 'muted', text: meta || '' })),
         h('div', { class: 'result__body' }, h('p', { text: res.raw || 'The plan could not be generated. Please try again.' })), extra);
@@ -84,7 +89,7 @@ window.BAMEventPlan = (() => {
       try { await navigator.clipboard.writeText(text); toast?.(ok, 'ok', 2500); }
       catch { toast?.('Your browser blocked copying. Select the text and copy it manually.', 'error'); }
     };
-    const planEl = body(res);
+    const planEl = body(res, toast);
     const btn = (label, onclick, title) => h('button', { type: 'button', class: 'btn btn--sm', onclick, title }, label);
     return h('article', { class: 'result event-plan', 'aria-label': 'Event plan' },
       h('div', { class: 'result__head' },
@@ -95,7 +100,7 @@ window.BAMEventPlan = (() => {
           btn('Print', () => print(planEl), 'Print or save as PDF'),
           btn('Download', () => download(`${slug(res.plan.title)}-${res.store.location_id}.txt`, res.text), 'Download as a text file'),
           res.slack && btn('Copy Slack blocks', () => copyText(JSON.stringify({ blocks: res.slack.blocks }, null, 2), 'Slack Block Kit JSON copied (paste into Block Kit Builder)')))),
-      planEl, extra);
+      planEl, window.BAMResults.followUps(res.follow_ups, onFollowUp), extra);
   }
 
   return { render };

@@ -3,8 +3,23 @@
 // Hub sign-in is trusted via the signed X-Zawadie-User-* headers (see src/middleware/auth.js);
 // ADMIN_API_KEY/TEAM_ACCESS_KEY remain the fallback when this app is run standalone.
 import cron from 'node-cron';
+import fs from 'node:fs';
+import dotenv from 'dotenv';
+
+// This app's database and model settings, taken from its own .env (next to this file) when the hub's .env doesn't set
+// them. Locally that lets the hub run this app with the same settings as `npm start` here; on Hostinger, where only the
+// hub's environment exists, they must be set there. Only these keys: the app's PORT, NODE_ENV and access keys must
+// never leak into the hub's process.
+const OWN_SETTINGS = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'OPENAI_CHAT_MODEL', 'OPENAI_EMBEDDING_MODEL', 'OPENAI_RESEARCH_MODEL'];
+function loadOwnSettings() {
+  const file = new URL('./.env', import.meta.url);
+  if (!fs.existsSync(file)) return;
+  const own = dotenv.parse(fs.readFileSync(file));
+  for (const key of OWN_SETTINGS) if (!process.env[key] && own[key]) process.env[key] = own[key];
+}
 
 export async function createSolution() {
+  loadOwnSettings(); // before importing the app: its database pool reads these when it loads
   const { default: app } = await import('./src/app.js');
   const { processQueue } = await import('./src/services/localResearchService.js');
 

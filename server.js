@@ -73,6 +73,22 @@ app.use(
   })
 );
 
+// The session keeps a copy of the user's role and solutions from sign-in.
+// Re-read them on every request so access an admin grants (or removes) in
+// the admin panel shows up on the employee's hub straight away, instead of
+// only after they sign out and back in. A removed account is signed out.
+app.use((req, res, next) => {
+  const sessionUser = req.session.user;
+  if (!sessionUser) return next();
+  const record = users.findByEmail(sessionUser.email);
+  if (!record) {
+    delete req.session.user;
+    return next();
+  }
+  req.session.user = { email: record.email, role: record.role, solutions: record.solutions || [] };
+  next();
+});
+
 function nameFromEmail(email) {
   return email
     .split('@')[0]

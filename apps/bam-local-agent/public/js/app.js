@@ -578,7 +578,7 @@
   }
 
   /* ---------- sandbox ---------- */
-  const SAMPLE_PROMPTS = ['What should we run for Spring Break?', 'Create a spring break event plan', 'Generate an event playbook for a local school partner'];
+  const SAMPLE_PROMPTS = ['What should we run for Spring Break?', 'Create a spring break event plan', 'Draft a partnership email to a local elementary school', 'When is the local school spring break?'];
   const sbPrompt = $('#sbPrompt');
 
   function renderSandboxHeader() {
@@ -624,10 +624,11 @@
 
   function renderResult(res) {
     const meta = `${res.store.city}, ${res.store.state} · ${res.playbook ? `Playbook ${res.playbook.label}` : 'No active playbook'} · ${res.model}`;
-    if (res.type === 'event_plan') {
-      $('#sbResult').replaceChildren(window.BAMEventPlan.render(res, { meta, toast, extra: contextDetails(res) }));
-      return;
-    }
+    const opts = { meta, toast, extra: contextDetails(res) };
+    if (res.type === 'event_plan') return $('#sbResult').replaceChildren(window.BAMEventPlan.render(res, opts));
+    if (res.type === 'content') return $('#sbResult').replaceChildren(window.BAMResults.content(res, opts));
+    if (res.type === 'answer') return $('#sbResult').replaceChildren(window.BAMResults.answer(res, opts));
+
     const a = res.answer;
     const body = h('div', { class: 'result__body' });
     if (a.raw) body.append(h('p', { text: a.raw }));
@@ -641,6 +642,7 @@
           p.playbook_support && h('span', { class: 'muted' }, h('span', { class: 'play__tag' }, 'Playbook'), p.playbook_support)))));
       if (a.heads_up) body.append(h('div', { class: 'callout' }, h('strong', {}, 'Heads-up: '), a.heads_up));
     }
+    if (res.pieces?.length) body.append(h('div', {}, h('div', { class: 'block-title', text: 'Drafts' }), window.BAMResults.pieceList(res.pieces, res.notes, { toast })));
 
     const copy = h('button', { type: 'button', class: 'btn btn--sm' }, 'Copy plan');
     copy.addEventListener('click', async () => {

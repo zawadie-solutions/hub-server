@@ -1,11 +1,12 @@
 import pool from '../config/db.js';
 import { ingestPlaybook, listPlaybooks, setActivePlaybook } from '../services/playbookService.js';
-import { generateEmbedding, generateLocalizedResult, getStoreProfile, insertChunk } from '../services/ragService.js';
+import { generateEmbedding, getStoreProfile, insertChunk } from '../services/ragService.js';
+import { generateLocalizedResult } from '../services/assistantService.js';
 import { createJob, updateJob, getJob } from '../services/jobService.js';
 import { listStores, storeExists, createStore, updateStore, deleteStore } from '../services/storeService.js';
 import { queueResearch, queueStaleResearch, effectiveStatus, workerActive, kickWorkerIfLocal, AUTO_SOURCE } from '../services/localResearchService.js';
 import { withTimeout, MAX_OPERATION_MS } from '../utils/timeout.js';
-import { planMode, eventPlanOutput } from './askController.js';
+import { planMode, previousInput, resultOutput } from './askController.js';
 
 const KNOWLEDGE_TYPES = ['demographic', 'school', 'event', 'community', 'culture'];
 const parseJson = (v) => { try { return v == null ? null : typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };   // MySQL returns objects, MariaDB strings
@@ -122,8 +123,11 @@ export async function testQuery(req, res, next) {
     if (!(await storeExists(location_id)) || !question?.trim() || question.length > 500) {
       return res.status(400).json({ error: 'Choose a store and a question up to 500 characters.' });
     }
-    const result = await withTimeout(generateLocalizedResult(question.trim(), location_id, { mode: planMode(req.body.mode) }), MAX_OPERATION_MS, 'Response generation');
-    res.json(result.type === 'event_plan' ? { ...result, ...eventPlanOutput(result, { slack: true }) } : result);
+    const result = await withTimeout(
+      generateLocalizedResult(question.trim(), location_id, { mode: planMode(req.body.mode), previous: previousInput(req.body.previous) }),
+      MAX_OPERATION_MS, 'Response generation');
+    // The sandbox also gets the retrieval details (sources, counts, model) to show what the answer was built from.
+    res.json({ ...result, ...resultOutput(result, { slack: true }) });
   } catch (err) { next(err); }
 }
 

@@ -122,53 +122,55 @@
     else el.textContent = `${where} · ${s.knowledge_count} local facts on file`;
   }
   $('#storeSelect').addEventListener('change', () => { showError($('#storeError'), '', $('#storeSelect')); local.set('bam_store', selectedStore()); showStoreDetail(); });
-  const storeName = (id) => { const s = state.stores.find((x) => x.location_id === id); return s ? s.city : id; };
-
-  const SUGGESTIONS = ['What should we run for Spring Break?', 'Create a spring break event plan', "Plan our Mother's Day promotion", 'Generate an event playbook for a local school partner'];
+  const SUGGESTIONS = [
+    'Create a spring break event plan',
+    'Draft a partnership email to a local elementary school',
+    'Write an Instagram post for our next build event',
+    'What should we run for Spring Break?',
+    'When is the local school spring break?'
+  ];
   const q = $('#q');
   SUGGESTIONS.forEach((t) => $('#suggest').append(h('button', { type: 'button', class: 'chip', text: t, onclick: () => { q.value = t; q.dispatchEvent(new Event('input')); q.focus(); } })));
   q.addEventListener('input', () => { $('#qCount').textContent = `${q.value.length} / 500`; if (q.value.trim().length >= 5) showError($('#qError'), '', q); });
-
-  const recent = () => { try { return JSON.parse(local.get('bam_recent') || '[]'); } catch { return []; } };
-  function pushRecent(storeId, question) {
-    const list = [{ s: storeId, q: question }, ...recent().filter((r) => !(r.s === storeId && r.q === question))].slice(0, 5);
-    local.set('bam_recent', JSON.stringify(list)); renderRecent();
-  }
-  function renderRecent() {
-    const list = recent(), box = $('#recent'); clear(box);
-    $('#recentBlock').hidden = list.length === 0;
-    list.forEach((r) => box.append(h('button', {
-      type: 'button', class: 'chip', title: r.q,
-      text: `${storeName(r.s)} · ${r.q.length > 38 ? `${r.q.slice(0, 38)}…` : r.q}`,
-      onclick: () => { const sel = $('#storeSelect'); if ([...sel.options].some((o) => o.value === r.s)) { sel.value = r.s; local.set('bam_store', r.s); showStoreDetail(); } q.value = r.q; q.dispatchEvent(new Event('input')); q.focus(); }
-    })));
-  }
+  q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ask(); } });
 
   /* ---------- asking ---------- */
-  const STATUS = ['Reading the current playbook…', 'Checking local schools, audience and events…', 'Matching campaigns to your dates…', 'Writing your plan…'];
+  const STATUS = ['Understanding your request…', 'Reading the playbook and local data…', 'Checking local schools, dates and events…', 'Writing it up…'];
   let statusTimer = null;
 
   $('#askForm').addEventListener('submit', (e) => { e.preventDefault(); ask(); });
+
+  /** A "Keep going" suggestion: asked straight away for the same store, building on the result on screen. */
+  function followUp(text) {
+    if (state.busy || !state.last) return;
+    q.value = text; q.dispatchEvent(new Event('input'));
+    const sel = $('#storeSelect'); if (sel.value !== state.last.storeId) { sel.value = state.last.storeId; showStoreDetail(); }
+    ask();
+  }
 
   async function ask(rerun) {
     if (state.busy) return;
     const storeId = rerun ? state.last.storeId : selectedStore();
     const question = rerun ? state.last.question : q.value.trim();
     if (!storeId) { showError($('#storeError'), 'Choose a store first.', $('#storeSelect')); return $('#storeSelect').focus(); }
-    if (question.length < 5) return showError($('#qError'), 'Type a question of at least 5 characters.', q);
+    if (question.length < 5) return showError($('#qError'), 'Type a request of at least 5 characters.', q);
     showError($('#storeError'), '', $('#storeSelect')); showError($('#qError'), '', q);
+    // The result on screen goes along so a request can build on it ("now write the email for this event"); the server
+    // only uses it when the request refers to it. Regenerate reuses the context the original request had.
+    const previous = rerun ? state.last.previous
+      : state.last && state.last.storeId === storeId && state.last.text ? { question: state.last.question, text: state.last.text.slice(0, 4000) } : null;
 
     state.busy = true;
-    const btn = $('#askBtn'); setLoading(btn, true, 'Building your plan…');
+    const btn = $('#askBtn'); setLoading(btn, true, 'Working on it…');
     let i = 0;
     const status = h('div', { class: 'status-line', role: 'status', text: STATUS[0] });
     $('#answer').replaceChildren(h('div', { class: 'result' }, h('div', { class: 'result__body' }, status, h('div', { class: 'skel' }), h('div', { class: 'skel skel--short' }), h('div', { class: 'skel' }), h('div', { class: 'skel skel--short' }))));
-    statusTimer = setInterval(() => { i = Math.min(i + 1, STATUS.length - 1); status.textContent = STATUS[i]; }, 2800);
+    statusTimer = setInterval(() => { i = Math.min(i + 1, STATUS.length - 1); status.textContent = STATUS[i]; }, 3200);
     const ctrl = new AbortController(); const timeout = setTimeout(() => ctrl.abort(), 105000);
     try {
-      const res = await api('api/ask', { method: 'POST', body: { location_id: storeId, question }, signal: ctrl.signal });
-      state.last = { storeId, question, res };
-      pushRecent(storeId, question); renderAnswer(res, question);
+      const res = await api('api/ask', { method: 'POST', body: { location_id: storeId, question, ...(previous ? { previous } : {}) }, signal: ctrl.signal });
+      state.last = { storeId, question, previous, res, text: res.text || (res.answer ? planText(res) : '') };
+      renderAnswer(res, question);
       $('#answer').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
     } catch (err) {
       clear($('#answer'));
@@ -188,18 +190,18 @@
     if (a.playbook_rules.length) out.push('PLAYBOOK CAMPAIGN RULES', ...a.playbook_rules.map((r) => `- ${r.campaign}${r.dates ? ` (${r.dates})` : ''}: ${r.rule}`), '');
     if (a.local_plays.length) out.push('LOCAL STORE ADAPTATION', ...a.local_plays.flatMap((p, i) => [`${i + 1}. ${p.action}`, p.local_hook && `   Local: ${p.local_hook}`, p.playbook_support && `   Playbook: ${p.playbook_support}`].filter(Boolean)), '');
     if (a.heads_up) out.push(`HEADS-UP: ${a.heads_up}`);
+    if (res.pieces?.length) out.push('', '', window.BAMResults.piecesText(res.pieces));
     return out.join('\n').trim();
   }
 
   function renderAnswer(res, question) {
-    if (res.type === 'event_plan') {
-      $('#answer').replaceChildren(window.BAMEventPlan.render(res, {
-        meta: `${res.store.city}, ${res.store.state} · ${res.playbook ? `Playbook ${res.playbook.label}` : 'No active playbook'} · “${question.length > 60 ? `${question.slice(0, 60)}…` : question}”`,
-        toast, regenerate: () => ask(true),
-        extra: res.consulted?.length ? h('p', { class: 'consulted ep-consulted', text: `Consulted: ${res.consulted.join(' · ')}` }) : null
-      }));
-      return;
-    }
+    const meta = `${res.store.city}, ${res.store.state} · ${res.playbook ? `Playbook ${res.playbook.label}` : 'No active playbook'} · “${question.length > 60 ? `${question.slice(0, 60)}…` : question}”`;
+    const consulted = (cls) => (res.consulted?.length ? h('p', { class: cls, text: `Consulted: ${res.consulted.join(' · ')}` }) : null);
+    const opts = { meta, toast, regenerate: () => ask(true), onFollowUp: followUp, extra: consulted('consulted ep-consulted') };
+    if (res.type === 'event_plan') return $('#answer').replaceChildren(window.BAMEventPlan.render(res, opts));
+    if (res.type === 'content') return $('#answer').replaceChildren(window.BAMResults.content(res, opts));
+    if (res.type === 'answer') return $('#answer').replaceChildren(window.BAMResults.answer(res, opts));
+
     const a = res.answer;
     const body = h('div', { class: 'result__body' });
     if (a.raw) body.append(h('p', { text: a.raw }));
@@ -213,7 +215,8 @@
           p.playbook_support && h('span', { class: 'muted' }, h('span', { class: 'play__tag' }, 'Playbook'), p.playbook_support)))));
       if (a.heads_up) body.append(h('div', { class: 'callout' }, h('strong', {}, 'Heads-up: '), a.heads_up));
     }
-    if (res.consulted?.length) body.append(h('p', { class: 'consulted', text: `Consulted: ${res.consulted.join(' · ')}` }));
+    if (res.pieces?.length) body.append(h('div', {}, h('div', { class: 'block-title', text: res.pieces.length > 1 ? 'Drafts' : 'Draft' }), window.BAMResults.pieceList(res.pieces, res.notes, { toast })));
+    const sources = consulted('consulted'); if (sources) body.append(sources);
 
     const copy = h('button', { type: 'button', class: 'btn btn--sm' }, 'Copy plan');
     copy.addEventListener('click', async () => {
@@ -226,21 +229,22 @@
       h('div', { class: 'result__head' },
         h('span', { class: 'muted', text: `${res.store.city}, ${res.store.state} · ${res.playbook ? `Playbook ${res.playbook.label}` : 'No active playbook'} · “${question.length > 60 ? `${question.slice(0, 60)}…` : question}”` }),
         h('div', { class: 'result__actions' }, again, copy)),
-      body));
+      body, window.BAMResults.followUps(res.follow_ups, followUp)));
   }
 
   /* ---------- boot ---------- */
-  renderRecent();
+  local.del('bam_recent');   // past requests are no longer kept; clear what older versions of this page saved
   (async function boot() {
     const hub = await hubSession();
     if (hub.canPlan) {
       state.sso = true;                                          // already signed in at the Zawadie Hub with access to this project
       state.canAdmin = !!hub.canAdmin;
       const who = $('#who'); who.textContent = hub.email; who.hidden = false;
+      $('#adminTop').hidden = !state.canAdmin;
     }
     if (state.sso || state.key) {
       $('#signOut').hidden = state.sso;
-      loadMeta().then(renderRecent).catch((err) => { if (err.status !== 401) toast(err.message, 'error', 8000); });
+      loadMeta().catch((err) => { if (err.status !== 401) toast(err.message, 'error', 8000); });
     } else openAuth();
   })();
 })();
