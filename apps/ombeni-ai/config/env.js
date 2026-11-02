@@ -1,6 +1,7 @@
-// Inside the Zawadie hub (see hub.js) every setting comes from the hub's shared .env with an
-// OMBENI_ prefix (OMBENI_OPENAI_API_KEY, OMBENI_SLACK_BOT_TOKEN, ...), so names like
-// SLACK_BOT_TOKEN, SESSION_SECRET or PORT can't clash with the hub's other apps.
+// Inside the Zawadie hub (see hub.js) settings come from the hub's shared environment. An
+// OMBENI_-prefixed name (OMBENI_OPENAI_API_KEY, ...) wins when it's set, so this app can have its
+// own key; otherwise it uses the shared name (OPENAI_API_KEY, ...), so the same key doesn't have
+// to be added twice. PORT and SESSION_SECRET are never shared: they mean something else to the hub.
 // Standalone (`node server.js`) it reads this project's own .env, unprefixed.
 const IN_HUB = process.env.OMBENI_IN_HUB === '1';
 const PREFIX = IN_HUB ? 'OMBENI_' : '';
@@ -11,13 +12,15 @@ const PREFIX = IN_HUB ? 'OMBENI_' : '';
 // value and .env changes appear to do nothing. (The hub loads its own .env.)
 if (!IN_HUB) require('dotenv').config({ override: true });
 
-const read = (name) => process.env[PREFIX + name] || '';
-const MONDAY_KEY_RE = new RegExp(`^${PREFIX}MONDAY_API_KEY(_\\d+)?$`);
-const mondayIndex = (k) => (k === `${PREFIX}MONDAY_API_KEY` ? 0 : Number(k.slice(`${PREFIX}MONDAY_API_KEY_`.length)));
+const readOwn = (name) => process.env[PREFIX + name] || '';
+const read = (name) => readOwn(name) || process.env[name] || '';
+const MONDAY_KEY_RE = /^MONDAY_API_KEY(_\d+)?$/;
+const mondayIndex = (k) => (k === 'MONDAY_API_KEY' ? 0 : Number(k.slice('MONDAY_API_KEY_'.length)));
+const unprefixedNames = new Set(Object.keys(process.env).map(k => (k.startsWith(PREFIX) ? k.slice(PREFIX.length) : k)));
 
 const env = {
   IN_HUB,
-  PORT: read('PORT') || 3000,
+  PORT: readOwn('PORT') || 3000,
   OPENAI_API_KEY: read('OPENAI_API_KEY'),
   MONDAY_API_KEY: read('MONDAY_API_KEY'),
   MONDAY_BOARD_ID: read('MONDAY_BOARD_ID'),
@@ -27,10 +30,10 @@ const env = {
   // pull from all of them and merge the results, so a recording that's
   // "missing" from one account's view still shows up. Task creation
   // (mondayService) intentionally keeps using MONDAY_API_KEY only.
-  MONDAY_API_KEYS: Object.keys(process.env)
+  MONDAY_API_KEYS: [...unprefixedNames]
     .filter(k => MONDAY_KEY_RE.test(k))
     .sort((a, b) => mondayIndex(a) - mondayIndex(b))
-    .map(k => process.env[k])
+    .map(k => read(k))
     .filter(Boolean),
   SLACK_BOT_TOKEN: read('SLACK_BOT_TOKEN'),
   SLACK_CHANNEL: read('SLACK_CHANNEL'),
@@ -41,7 +44,7 @@ const env = {
   // is what actually enforces that; without it, exchangeCodeForUser accepted
   // any Google account with a verified email, from any domain.
   GOOGLE_ALLOWED_DOMAIN: read('GOOGLE_ALLOWED_DOMAIN') || 'zawadie.com',
-  SESSION_SECRET: read('SESSION_SECRET') || 'ombeni-dev-secret-change-me',
+  SESSION_SECRET: readOwn('SESSION_SECRET') || 'ombeni-dev-secret-change-me',
   // Standalone only: shared with the Zawadie Hub (hub-server/data/sso-secret.txt)
   // so this app can trust a sign-in that already happened there. Inside the hub
   // the signed-in user is handed over directly (req.hubUser) instead.

@@ -13,7 +13,7 @@ module.exports = [
       "Zawadie's standalone AI employee — a company assistant that answers questions and gets work done by plugging into calendar, Slack, and Monday.com.",
     status: 'available',
     // Built in: runs inside the hub's own process (apps/ombeni-ai). Its
-    // settings are the OMBENI_-prefixed ones in the hub's .env.
+    // settings come from the hub's environment (see its config/env.js).
     load: () => import('./apps/ombeni-ai/hub.js'),
     icon: 'bot',
   },
