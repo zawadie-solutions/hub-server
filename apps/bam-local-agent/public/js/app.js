@@ -259,19 +259,24 @@
         h('td', { class: 'file', title: p.filename, text: p.filename }),
         h('td', { class: 'muted', text: fmtDate(p.uploaded_at) }),
         h('td', { class: 'act' }, p.is_active
-          ? h('span', { class: 'badge badge--info', text: '● Active' })
+          ? [h('span', { class: 'badge badge--info', text: '● Active' }),
+             h('button', { type: 'button', class: 'btn btn--sm', 'aria-label': `Deactivate Q${p.quarter} ${p.year} playbook`, onclick: () => setActive(p.id, false) }, 'Deactivate')]
           : h('button', { type: 'button', class: 'btn btn--sm', 'aria-label': `Set Q${p.quarter} ${p.year} playbook active`, onclick: () => setActive(p.id) }, 'Set active'))));
     }
   }
-  async function setActive(id) {
+  async function setActive(id, on = true) {
     const before = state.overview.playbooks.map((p) => p.is_active);
-    state.overview.playbooks.forEach((p) => { p.is_active = p.id === id ? 1 : 0; });   // optimistic
+    state.overview.playbooks.forEach((p) => { p.is_active = on && p.id === id ? 1 : 0; });   // optimistic (only one is ever active, so turning it off leaves none)
     renderPlaybooks(); renderPill();
-    try { await api(`api/admin/playbooks/${id}/activate`, { method: 'POST' }); toast('Playbook activated', 'ok'); loadOverview({ silent: true }).catch(() => {}); }
+    try {
+      await api(`api/admin/playbooks/${id}/${on ? 'activate' : 'deactivate'}`, { method: 'POST' });
+      toast(on ? 'Playbook activated' : 'Playbook deactivated. The planner uses no playbook until one is set active.', 'ok');
+      loadOverview({ silent: true }).catch(() => {});
+    }
     catch (err) {
       state.overview.playbooks.forEach((p, i) => { p.is_active = before[i]; });
       renderPlaybooks(); renderPill();
-      if (err.status !== 401) toast(`Could not activate: ${err.message}`, 'error');
+      if (err.status !== 401) toast(`Could not ${on ? 'activate' : 'deactivate'}: ${err.message}`, 'error');
     }
   }
 
@@ -680,7 +685,7 @@
     let hub = {};
     try { hub = await (await fetch('api/session', { cache: 'no-store' })).json(); } catch { /* fall back to the admin key */ }
     if (hub.canAdmin) {
-      state.sso = true;                                          // already signed in at the Zawadie Hub as an admin
+      state.sso = true;                                          // already signed in at the Zawadie Hub with access to this project
       const who = $('#who'); who.textContent = hub.email; who.hidden = false;
     }
     if (state.sso || state.key) {
@@ -690,6 +695,6 @@
         toast(err.message, 'error', 8000);
         $('#storePanel').replaceChildren(h('p', { class: 'empty', text: 'Could not load data. Refresh to try again.' }));
       });
-    } else openAuth(hub.sso ? 'Your hub account can use the Marketing Planner. Settings needs the admin key.' : undefined);
+    } else openAuth();
   })();
 })();

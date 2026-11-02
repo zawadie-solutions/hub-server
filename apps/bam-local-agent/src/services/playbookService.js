@@ -77,6 +77,22 @@ export async function setActivePlaybook(id) {
   }
 }
 
+/** Take one playbook out of use: its chunks stop being searched, and it stays listed so it can be set active again. */
+export async function deactivatePlaybook(id) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.execute('UPDATE playbooks SET is_active = 0 WHERE id = ?', [id]);
+    await conn.execute('UPDATE knowledge_chunks SET is_active = 0 WHERE playbook_id = ?', [id]);
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 /**
  * Extract, chunk, embed and store a playbook, then activate it.
  * Chunks go in inactive; the switch to active happens only after everything succeeded,

@@ -1,5 +1,5 @@
 import pool from '../config/db.js';
-import { ingestPlaybook, listPlaybooks, setActivePlaybook } from '../services/playbookService.js';
+import { ingestPlaybook, listPlaybooks, setActivePlaybook, deactivatePlaybook as turnOffPlaybook } from '../services/playbookService.js';
 import { generateEmbedding, getStoreProfile, insertChunk } from '../services/ragService.js';
 import { generateLocalizedResult } from '../services/assistantService.js';
 import { createJob, updateJob, getJob } from '../services/jobService.js';
@@ -92,6 +92,10 @@ export async function getPlaybooks(req, res, next) {
 
 export async function activatePlaybook(req, res, next) {
   try { await setActivePlaybook(Number(req.params.id)); res.json({ ok: true }); } catch (err) { next(err); }
+}
+
+export async function deactivatePlaybook(req, res, next) {
+  try { await turnOffPlaybook(Number(req.params.id)); res.json({ ok: true }); } catch (err) { next(err); }
 }
 
 /** Add one local knowledge chunk (demographics / school calendar / event) for a store. */

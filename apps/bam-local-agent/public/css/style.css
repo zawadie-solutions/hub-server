@@ -103,6 +103,7 @@ select:focus, input:focus, textarea:focus { outline: 3px solid var(--accent-ring
 .table td.file { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .table tr.is-active td { background: #FEF6F9; }
 .table td.act { text-align: right; white-space: nowrap; }
+.table td.act .badge + .btn { display: block; margin: 6px 0 0 auto; }
 .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
 .badge--ok { background: var(--ok-soft); color: var(--ok); } .badge--info { background: var(--accent-soft); color: var(--accent); }
 .badge--warn { background: var(--warn-soft); color: var(--warn); } .badge--neutral { background: var(--surface-2); color: var(--muted); }

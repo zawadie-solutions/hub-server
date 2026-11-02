@@ -91,7 +91,7 @@
   function renderStores() {
     const select = $('#storeSelect'); clear(select);
     const saved = local.get('bam_store');
-    select.append(h('option', { value: '', text: state.stores.length ? 'Choose a store…' : 'No stores yet - ask an admin to add one' }));
+    select.append(h('option', { value: '', text: state.stores.length ? 'Choose a store…' : 'No stores yet - add one in Settings' }));
     const byState = new Map();
     for (const s of [...state.stores].sort((a, b) => a.state.localeCompare(b.state) || a.city.localeCompare(b.city))) {
       if (!byState.has(s.state)) byState.set(s.state, []);

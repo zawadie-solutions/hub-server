@@ -5,7 +5,7 @@ import multer from 'multer';
 import { requireAdminKey, requireTeamKey, sessionInfo } from '../middleware/auth.js';
 import { askMeta, askQuestion } from '../controllers/askController.js';
 import {
-  health, getOverview, uploadPlaybook, getJobStatus, getPlaybooks, activatePlaybook,
+  health, getOverview, uploadPlaybook, getJobStatus, getPlaybooks, activatePlaybook, deactivatePlaybook,
   addKnowledge, deleteKnowledge, testQuery, addStore, researchStore, patchStore, removeStore, reviewKnowledge
 } from '../controllers/adminController.js';
 
@@ -28,6 +28,7 @@ router.get('/admin/overview', getOverview);
 router.post('/admin/playbooks', upload.single('file'), uploadPlaybook);
 router.get('/admin/playbooks', getPlaybooks);
 router.post('/admin/playbooks/:id/activate', activatePlaybook);
+router.post('/admin/playbooks/:id/deactivate', deactivatePlaybook);
 router.get('/admin/jobs/:id', getJobStatus);
 router.post('/admin/stores', addStore);
 router.post('/admin/stores/:id/research', researchStore);
@@ -56,10 +57,4 @@ pageRouter.use((req, res, next) => {
 pageRouter.use(express.static(publicDir, { index: false, maxAge: 0, etag: true, setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
 pageRouter.get('/', (req, res) => res.redirect('ask'));                                              // everyone lands on the planner (Home)
 pageRouter.get('/ask', (req, res) => res.sendFile(path.join(publicDir, 'ask.html')));                // marketing planner (Home)
-pageRouter.get('/admin', (req, res) => {                                                             // Settings (admin portal)
-  // A hub user who has this project but isn't a hub admin can only use the planner: send them back to it
-  // instead of showing an admin-key prompt they have no key for.
-  const hub = sessionInfo(req);
-  if (hub.canPlan && !hub.canAdmin) return res.redirect('ask');
-  res.sendFile(path.join(publicDir, 'index.html'));
-});
+pageRouter.get('/admin', (req, res) => res.sendFile(path.join(publicDir, 'index.html')));            // Settings (admin portal)

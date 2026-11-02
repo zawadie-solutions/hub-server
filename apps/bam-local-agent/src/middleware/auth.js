@@ -34,10 +34,9 @@ export function verifyHubUser(req) {
   return { email: String(email).toLowerCase(), role: String(role) };
 }
 
-/* Which hub roles may skip the key. Hub admins manage everything; any other hub user who was granted this project may
- * use the marketing planner. Playbook uploads, store changes and knowledge edits stay admin-only (they can also still
- * sign in with ADMIN_API_KEY). To let every hub user into the admin portal, add 'employee' to ADMIN_HUB_ROLES. */
-const ADMIN_HUB_ROLES = ['admin'];
+/* Which hub roles may skip the key. The hub only lets through people who were granted this project, and every one of
+ * them may use both the marketing planner and Settings (playbooks, stores, knowledge). */
+const ADMIN_HUB_ROLES = ['admin', 'employee'];
 const TEAM_HUB_ROLES = ['admin', 'employee'];
 
 /** What the pages need to know on load: who is signed in through the hub and what they can open without a key. */
@@ -67,7 +66,7 @@ function guard(envName, header, hubRoles, { notConfigured }) {
   };
 }
 
-/** Admin portal and /api/admin/*: hub admin, or header x-admin-key = ADMIN_API_KEY. */
+/** Settings and /api/admin/*: any hub user with access, or header x-admin-key = ADMIN_API_KEY. */
 export const requireAdminKey = guard('ADMIN_API_KEY', 'x-admin-key', ADMIN_HUB_ROLES, {
   notConfigured: 'Admin access is not configured. Set ADMIN_API_KEY in .env.'
 });
