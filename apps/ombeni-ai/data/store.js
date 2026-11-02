@@ -1,6 +1,7 @@
 const seedMeetings = require('./meetings');
 const notetakerService = require('../services/notetakerService');
 const mondayService = require('../services/mondayService');
+const adminBoards = require('./adminBoards');
 const syncedActionItems = require('./syncedActionItems');
 
 // In-memory application state. Swap this out for a real database once the
@@ -33,26 +34,29 @@ let activitySeq = 1;
 // already made it to Monday, so re-running this on every refresh only ever
 // pushes what's actually new (and retries ones that failed, e.g. because
 // Monday wasn't configured yet at the time).
+const actionItemKey = (meeting, item) => `${meeting.id}::${item.id || item.task}`;
+
 async function syncActionItemsToMonday(meeting) {
   const items = meeting.analysis && meeting.analysis.actionItems;
   if (!Array.isArray(items)) return;
 
   for (const item of items) {
     if (item.completed) continue;
-    const key = `${meeting.id}::${item.id || item.task}`;
-    if (syncedActionItems.has(key)) continue;
+    const key = actionItemKey(meeting, item);
+    if (await syncedActionItems.has(key)) continue;
 
     const mondayResult = await mondayService.createTask({
       task: item.task,
       owner: item.owner,
       due: item.due,
       project: meeting.project,
-      priority: item.priority
+      priority: item.priority,
+      boardId: await adminBoards.boardForOwner(item.owner)
     });
     item.mondayResult = mondayResult;
 
     if (mondayResult.created) {
-      syncedActionItems.markSynced(key);
+      await syncedActionItems.markSynced(key);
       logActivity({
         action: `Created task "${item.task}" in Monday.com from "${meeting.title}"`,
         source: 'Monday.com'
@@ -67,13 +71,36 @@ async function syncActionItemsToMonday(meeting) {
 // quickly, and shouldn't be stuck waiting on a potentially long chain of
 // Monday API calls (one create_item mutation per unsynced action item) just
 // to get it.
+//
+// Only one runs at a time, because two overlapping refreshes could otherwise
+// both see an item as new and create it twice. The next refresh picks up
+// anything this one skipped.
+let syncAllRunning = false;
+
 async function syncAllActionItems(meetingsList) {
-  for (const meeting of meetingsList) {
-    try {
-      await syncActionItemsToMonday(meeting);
-    } catch (err) {
-      console.error(`⚠️ Failed to sync action items for meeting "${meeting.title}":`, err.message);
+  if (syncAllRunning) return;
+  syncAllRunning = true;
+  try {
+    // An empty list may just mean Monday couldn't be reached, so it doesn't
+    // count as having seen the existing meetings.
+    if (meetingsList.length > 0 && await syncedActionItems.needsBaseline()) {
+      const existingKeys = meetingsList.flatMap(meeting =>
+        ((meeting.analysis && meeting.analysis.actionItems) || []).map(item => actionItemKey(meeting, item))
+      );
+      await syncedActionItems.recordBaseline(existingKeys);
+      logActivity({ action: `Recorded ${existingKeys.length} existing action item(s) as already handled`, source: 'Monday.com' });
+      return;
     }
+
+    for (const meeting of meetingsList) {
+      try {
+        await syncActionItemsToMonday(meeting);
+      } catch (err) {
+        console.error(`⚠️ Failed to sync action items for meeting "${meeting.title}":`, err.message);
+      }
+    }
+  } finally {
+    syncAllRunning = false;
   }
 }
 

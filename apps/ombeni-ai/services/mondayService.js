@@ -3,9 +3,9 @@ const settings = require('../data/settings');
 
 const MONDAY_API_URL = 'https://api.monday.com/v2';
 
-// The board tasks get created on is normally fixed by MONDAY_BOARD_ID in
-// .env, but an admin can override it from Settings (see data/settings.js) —
-// that override always wins, without needing a server restart.
+// The shared board: fixed by MONDAY_BOARD_ID, unless data/settings.js names
+// one. Used for any task that isn't going to an admin's own board (see
+// data/adminBoards.js).
 function getBoardId() {
   return settings.get().mondayBoardId || env.MONDAY_BOARD_ID;
 }
@@ -194,15 +194,16 @@ async function attachFileToItem(itemId, columnId, file) {
  * `status`/`priority` may be either the board's own label text (what the
  * manual task form's dropdowns send) or our High/Medium/Low scale (what AI
  * meeting analysis produces) — both are resolved against the board's actual
- * labels. `file`, if given, is { buffer, filename, mimetype }.
+ * labels. `file`, if given, is { buffer, filename, mimetype }. `boardId`, if
+ * given, is an admin's own board; otherwise the task goes to the shared one.
  */
-async function createTask({ task, owner, due, project, priority, status, file }) {
-  if (!isConfigured()) {
+async function createTask({ task, owner, due, project, priority, status, file, boardId: chosenBoardId }) {
+  const boardId = chosenBoardId || getBoardId();
+  if (!env.MONDAY_API_KEY || !boardId) {
     return { created: false, reason: 'not_configured' };
   }
 
   try {
-    const boardId = getBoardId();
     const [columns, groupId] = await Promise.all([getBoardColumns(boardId), getOrCreateTaskGroup(boardId)]);
     const columnValues = {};
 

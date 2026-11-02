@@ -975,12 +975,14 @@ async function refreshMondayBoardSettings() {
       return;
     }
     select.disabled = false;
-    select.innerHTML = data.boards.map(b =>
+    select.innerHTML = '<option value="">Use the shared board</option>' + data.boards.map(b =>
       `<option value="${escapeHtml(b.id)}" ${String(b.id) === String(data.boardId) ? 'selected' : ''}>${escapeHtml(b.name)}</option>`
     ).join('');
     meta.textContent = data.boardId
-      ? `Currently creating tasks on board id ${data.boardId}.`
-      : 'No board selected yet — tasks will be stored as "pending sync" until one is chosen.';
+      ? `Your tasks go to board id ${data.boardId}.`
+      : data.sharedBoardId
+        ? `Your tasks go to the shared board (id ${data.sharedBoardId}).`
+        : 'No board selected yet — tasks will be stored as "pending sync" until one is chosen.';
   } catch (err) {
     meta.textContent = `Couldn't load boards: ${err.message}`;
   }
@@ -988,7 +990,6 @@ async function refreshMondayBoardSettings() {
 
 document.getElementById('saveMondayBoardBtn').addEventListener('click', async (e) => {
   const boardId = document.getElementById('mondayBoardSelect').value;
-  if (!boardId) return;
   e.target.disabled = true;
   e.target.textContent = 'Saving…';
   try {

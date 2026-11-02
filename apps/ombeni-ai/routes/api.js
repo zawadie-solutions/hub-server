@@ -7,7 +7,7 @@ const store = require('../data/store');
 const knowledgeStore = require('../data/knowledgeStore');
 const systemInstructions = require('../data/systemInstructions');
 const admins = require('../data/admins');
-const settings = require('../data/settings');
+const adminBoards = require('../data/adminBoards');
 const { processMeetingAnalysis, handleChat } = require('../services/openaiService');
 const mondayService = require('../services/mondayService');
 const slackService = require('../services/slackService');
@@ -56,9 +56,13 @@ function currentEmail(req) {
 // Unlike meeting-participant checks, this never falls back to "open" when
 // there's no identity source — system instructions shape the AI's behavior
 // for every user, so without a verified identity nobody is treated as admin.
-function requireAdmin(req, res, next) {
-  if (!admins.isAdmin(currentEmail(req))) {
-    return res.status(403).json({ success: false, error: 'Admin access required' });
+async function requireAdmin(req, res, next) {
+  try {
+    if (!(await admins.isAdmin(currentEmail(req)))) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
   }
   next();
 }
@@ -322,6 +326,7 @@ router.post('/chat', async (req, res) => {
     const { reply, sourcesUsed } = await handleChat(messages, {
       meetings: contextMeetings,
       calendarEvents,
+      taskBoardId: await adminBoards.boardForAdmin(currentEmail(req)),
       onTaskCreated: ({ task, mondayResult }) => {
         store.logActivity({
           user: req.appSession.user ? req.appSession.user.name : undefined,
@@ -366,23 +371,26 @@ router.put('/system-instructions', requireAdmin, (req, res) => {
 
 // --- Monday.com task board (admin only) --------------------------------------
 
-// Lets an admin pick which Monday.com board Ombeni AI creates tasks on —
-// both from manual meeting review and from chat — without needing to touch
-// MONDAY_BOARD_ID in .env or restart the server.
+// Each admin picks their own board here, which never changes anyone else's.
+// Everyone else's tasks use the shared board.
 router.get('/settings/monday-board', requireAdmin, async (req, res) => {
   try {
-    const boards = await mondayService.listBoards();
-    res.json({ success: true, data: { boardId: mondayService.getBoardId(), boards } });
+    const [boards, boardId] = await Promise.all([mondayService.listBoards(), adminBoards.boardForAdmin(currentEmail(req))]);
+    res.json({ success: true, data: { boardId, sharedBoardId: mondayService.getBoardId() || null, boards } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-router.put('/settings/monday-board', requireAdmin, (req, res) => {
+router.put('/settings/monday-board', requireAdmin, async (req, res) => {
   try {
-    const data = settings.setMondayBoardId(req.body.boardId, req.appSession.user.name);
-    store.logActivity({ user: req.appSession.user.name, action: `Changed the Monday.com task board (board id ${data.mondayBoardId})`, source: 'Settings' });
-    res.json({ success: true, data: { boardId: mondayService.getBoardId() } });
+    const boardId = await adminBoards.setBoardForAdmin(currentEmail(req), req.body.boardId);
+    store.logActivity({
+      user: req.appSession.user.name,
+      action: boardId ? `Set their own Monday.com task board (board id ${boardId})` : 'Went back to the shared Monday.com task board',
+      source: 'Monday.com'
+    });
+    res.json({ success: true, data: { boardId, sharedBoardId: mondayService.getBoardId() || null } });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -390,13 +398,17 @@ router.put('/settings/monday-board', requireAdmin, (req, res) => {
 
 // --- Admin management (admin only) -------------------------------------------
 
-router.get('/admins', requireAdmin, (req, res) => {
-  res.json({ success: true, data: admins.list() });
+router.get('/admins', requireAdmin, async (req, res) => {
+  try {
+    res.json({ success: true, data: await admins.list() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
-router.post('/admins', requireAdmin, (req, res) => {
+router.post('/admins', requireAdmin, async (req, res) => {
   try {
-    const data = admins.add(req.body.email);
+    const data = await admins.add(req.body.email);
     store.logActivity({ user: req.appSession.user.name, action: `Added admin: ${req.body.email}`, source: 'Settings' });
     res.json({ success: true, data });
   } catch (err) {
@@ -404,9 +416,9 @@ router.post('/admins', requireAdmin, (req, res) => {
   }
 });
 
-router.delete('/admins/:email', requireAdmin, (req, res) => {
+router.delete('/admins/:email', requireAdmin, async (req, res) => {
   try {
-    const data = admins.remove(req.params.email);
+    const data = await admins.remove(req.params.email);
     store.logActivity({ user: req.appSession.user.name, action: `Removed admin: ${req.params.email}`, source: 'Settings' });
     res.json({ success: true, data });
   } catch (err) {

@@ -41,17 +41,21 @@ router.post('/logout', (req, res) => {
   });
 });
 
-router.get('/me', (req, res) => {
+router.get('/me', async (req, res) => {
   const user = req.appSession.user || null;
-  res.json({
-    success: true,
-    data: {
-      googleConfigured: authService.isConfigured(),
-      calendarConnected: Boolean(req.appSession.googleTokens),
-      user,
-      isAdmin: Boolean(user) && admins.isAdmin(user.email)
-    }
-  });
+  try {
+    res.json({
+      success: true,
+      data: {
+        googleConfigured: authService.isConfigured(),
+        calendarConnected: Boolean(req.appSession.googleTokens),
+        user,
+        isAdmin: Boolean(user) && await admins.isAdmin(user.email)
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 module.exports = router;

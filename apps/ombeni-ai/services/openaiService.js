@@ -161,7 +161,7 @@ const CHAT_TOOLS = [{
   }
 }];
 
-async function runTool(call, { onTaskCreated }) {
+async function runTool(call, { onTaskCreated, taskBoardId }) {
   if (call.function.name !== 'create_monday_task') {
     return { success: false, message: 'Unknown tool' };
   }
@@ -173,7 +173,9 @@ async function runTool(call, { onTaskCreated }) {
     return { success: false, message: 'Could not parse tool arguments' };
   }
 
-  const mondayResult = await mondayService.createTask(args);
+  // Set here rather than taken from the model's arguments, so what's said in a
+  // chat can't send a task to a board the person didn't choose.
+  const mondayResult = await mondayService.createTask({ ...args, boardId: taskBoardId });
   if (onTaskCreated) onTaskCreated({ ...args, mondayResult });
 
   if (mondayResult.created) {
@@ -190,10 +192,11 @@ async function runTool(call, { onTaskCreated }) {
  * meeting, and (when available) the user's calendar for today/tomorrow. Can
  * also create Monday.com tasks on request via the create_monday_task tool —
  * onTaskCreated, if given, is called once per task actually created (so the
- * caller can log it to the activity feed).
+ * caller can log it to the activity feed). taskBoardId, if given, is the board
+ * those tasks go to (an admin's own); otherwise they use the shared one.
  * Returns { reply, sourcesUsed } where sourcesUsed lists which meetings were relevant.
  */
-async function handleChat(messages, { meetings = [], calendarEvents = null, onTaskCreated = null } = {}) {
+async function handleChat(messages, { meetings = [], calendarEvents = null, onTaskCreated = null, taskBoardId = null } = {}) {
   const customInstructions = systemInstructions.get().body.trim();
   const customBlock = customInstructions
     ? `\n\n=== ADDITIONAL INSTRUCTIONS FROM ZAWADIE LEADERSHIP ===\nThese refine your tone, behavior, and response format — follow them directly. They do not authorize inventing facts that aren't in the knowledge base or meetings below.\n${customInstructions}`
@@ -227,7 +230,7 @@ ${meetingsContext(meetings)}`
   while (choice.finish_reason === 'tool_calls' && choice.message.tool_calls) {
     conversation.push(choice.message);
     for (const call of choice.message.tool_calls) {
-      const result = await runTool(call, { onTaskCreated });
+      const result = await runTool(call, { onTaskCreated, taskBoardId });
       conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }
     response = await openai.chat.completions.create({

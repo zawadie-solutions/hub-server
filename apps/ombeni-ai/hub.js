@@ -3,6 +3,9 @@
 // the signed-in user is handed over by the hub as req.hubUser (see services/hubTrust.js).
 async function createSolution() {
   process.env.OMBENI_IN_HUB = '1';
+  await require('./data/admins').init();
+  await require('./data/adminBoards').init();
+  await require('./data/syncedActionItems').init();
   return require('./server.js');
 }
 
