@@ -31,6 +31,7 @@ const { createProxyMiddleware, fixRequestBody } = require('http-proxy-middleware
 
 const SOLUTIONS = require('./solutions');
 const users = require('./store/users');
+const sessions = require('./store/sessions');
 const { getSessionSecret } = require('./store/secret');
 const { getSsoSecret } = require('./store/ssoSecret');
 const { requireLogin, requireAdmin, requireSolutionAccess } = require('./middleware/auth');
@@ -48,7 +49,9 @@ function signHubIdentity(user) {
 
 const ZAWADIE_EMAIL_RE = /^[^\s@]+@zawadie\.com$/i;
 
-users.ensureSeeded(SOLUTIONS.map((s) => s.id));
+// Express 4 doesn't catch a rejected promise from an async handler, so a
+// database error would otherwise leave the request hanging.
+const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 
 const app = express();
 // Without this, Express treats "/ombeni-ai" and "/ombeni-ai/" as the same
@@ -66,6 +69,7 @@ app.use(
     // this cookie can't collide with a proxied solution's own session
     // cookie — both are set under the same origin once proxied.
     name: 'zawadie_hub.sid',
+    store: new sessions.MysqlSessionStore(),
     secret: getSessionSecret(),
     resave: false,
     saveUninitialized: false,
@@ -77,17 +81,17 @@ app.use(
 // Re-read them on every request so access an admin grants (or removes) in
 // the admin panel shows up on the employee's hub straight away, instead of
 // only after they sign out and back in. A removed account is signed out.
-app.use((req, res, next) => {
+app.use(wrap(async (req, res, next) => {
   const sessionUser = req.session.user;
   if (!sessionUser) return next();
-  const record = users.findByEmail(sessionUser.email);
+  const record = await users.findByEmail(sessionUser.email);
   if (!record) {
     delete req.session.user;
     return next();
   }
   req.session.user = { email: record.email, role: record.role, solutions: record.solutions || [] };
   next();
-});
+}));
 
 function nameFromEmail(email) {
   return email
@@ -124,7 +128,7 @@ app.get('/login', (req, res) => {
   res.render('login', { error: null, emailValue: '', next: req.query.next || '' });
 });
 
-app.post('/login', (req, res) => {
+app.post('/login', wrap(async (req, res) => {
   const email = (req.body.email || '').trim();
   const password = req.body.password || '';
   const next = req.query.next || '';
@@ -133,7 +137,7 @@ app.post('/login', (req, res) => {
     return res.status(401).render('login', { error: 'Access is limited to @zawadie.com accounts.', emailValue: email, next });
   }
 
-  const record = users.findByEmail(email);
+  const record = await users.findByEmail(email);
   if (!record || !users.verifyPassword(password, record.passwordHash)) {
     return res.status(401).render('login', { error: 'Incorrect email or password.', emailValue: email, next });
   }
@@ -143,14 +147,14 @@ app.post('/login', (req, res) => {
     req.session.user = { email: record.email, role: record.role, solutions: record.solutions || [] };
     res.redirect(safeNext(next));
   });
-});
+}));
 
 app.post('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/login'));
 });
 
-app.get('/invite/:token', (req, res) => {
-  const record = users.findByInviteToken(req.params.token);
+app.get('/invite/:token', wrap(async (req, res) => {
+  const record = await users.findByInviteToken(req.params.token);
   if (!record || record.passwordHash) {
     return res.status(400).render('invite', { error: 'This invite link is invalid or has already been used.', email: null, token: null });
   }
@@ -158,10 +162,10 @@ app.get('/invite/:token', (req, res) => {
     return res.status(400).render('invite', { error: 'This invite link has expired. Ask your admin to resend it.', email: null, token: null });
   }
   res.render('invite', { error: null, email: record.email, token: record.inviteToken });
-});
+}));
 
-app.post('/invite/:token', (req, res) => {
-  const record = users.findByInviteToken(req.params.token);
+app.post('/invite/:token', wrap(async (req, res) => {
+  const record = await users.findByInviteToken(req.params.token);
   const fail = (error, email, token) => res.status(400).render('invite', { error, email, token });
 
   if (!record || record.passwordHash) return fail('This invite link is invalid or has already been used.', null, null);
@@ -172,13 +176,14 @@ app.post('/invite/:token', (req, res) => {
   if (password.length < 8) return fail('Password must be at least 8 characters.', record.email, record.inviteToken);
   if (password !== confirm) return fail('Passwords do not match.', record.email, record.inviteToken);
 
-  const activated = users.acceptInvite(record.inviteToken, password);
+  const activated = await users.acceptInvite(record.inviteToken, password);
+  if (!activated) return fail('This invite link is invalid or has already been used.', null, null);
   req.session.regenerate((err) => {
     if (err) return fail('Something went wrong. Try again.', record.email, record.inviteToken);
     req.session.user = { email: activated.email, role: activated.role, solutions: activated.solutions || [] };
     res.redirect('/');
   });
-});
+}));
 
 // ---------------- hub ----------------
 
@@ -204,27 +209,27 @@ app.get('/', requireLogin, (req, res) => {
 
 // ---------------- admin ----------------
 
-app.get('/admin', requireLogin, requireAdmin, (req, res) => {
+app.get('/admin', requireLogin, requireAdmin, wrap(async (req, res) => {
   res.render('admin', {
     user: req.session.user,
-    employees: users.all(),
+    employees: await users.all(),
     solutions: SOLUTIONS,
     error: null,
     notice: req.query.notice || null,
     inviteUrl: (token) => inviteUrl(req, token),
     inviteExpired: users.isInviteExpired,
   });
-});
+}));
 
-app.post('/admin/users', requireLogin, requireAdmin, (req, res) => {
+app.post('/admin/users', requireLogin, requireAdmin, wrap(async (req, res) => {
   const email = (req.body.email || '').trim().toLowerCase();
   const role = req.body.role === 'admin' ? 'admin' : 'employee';
   const solutionIds = toIdList(req.body.solutions);
 
-  const fail = (error) =>
+  const fail = async (error) =>
     res.status(400).render('admin', {
       user: req.session.user,
-      employees: users.all(),
+      employees: await users.all(),
       solutions: SOLUTIONS,
       error,
       notice: null,
@@ -233,9 +238,9 @@ app.post('/admin/users', requireLogin, requireAdmin, (req, res) => {
     });
 
   if (!ZAWADIE_EMAIL_RE.test(email)) return fail('Email must end in @zawadie.com.');
-  if (users.findByEmail(email)) return fail(`${email} already has an account.`);
+  if (await users.findByEmail(email)) return fail(`${email} already has an account.`);
 
-  users.createInvite({
+  await users.createInvite({
     email,
     role,
     // Admins bypass the per-solution check entirely (see requireSolutionAccess),
@@ -243,33 +248,33 @@ app.post('/admin/users', requireLogin, requireAdmin, (req, res) => {
     solutions: role === 'admin' ? SOLUTIONS.map((s) => s.id) : solutionIds,
   });
   res.redirect('/admin?notice=' + encodeURIComponent(`Invite created for ${email}. Copy their link below and send it to them.`));
-});
+}));
 
-app.post('/admin/users/:email/access', requireLogin, requireAdmin, (req, res) => {
+app.post('/admin/users/:email/access', requireLogin, requireAdmin, wrap(async (req, res) => {
   const email = decodeURIComponent(req.params.email);
-  const existing = users.findByEmail(email);
+  const existing = await users.findByEmail(email);
   if (!existing) return res.redirect('/admin');
   if (existing.role === 'admin') return res.redirect('/admin'); // admins always have full access
 
-  users.addOrUpdate({ ...existing, solutions: toIdList(req.body.solutions) });
+  await users.updateSolutions(existing.email, toIdList(req.body.solutions));
   res.redirect('/admin?notice=' + encodeURIComponent(`${existing.email}'s access was updated.`));
-});
+}));
 
-app.post('/admin/users/:email/resend-invite', requireLogin, requireAdmin, (req, res) => {
+app.post('/admin/users/:email/resend-invite', requireLogin, requireAdmin, wrap(async (req, res) => {
   const email = decodeURIComponent(req.params.email);
-  const resent = users.resendInvite(email);
+  const resent = await users.resendInvite(email);
   if (!resent) return res.redirect('/admin');
   res.redirect('/admin?notice=' + encodeURIComponent(`A fresh invite link was generated for ${email}.`));
-});
+}));
 
-app.post('/admin/users/:email/delete', requireLogin, requireAdmin, (req, res) => {
+app.post('/admin/users/:email/delete', requireLogin, requireAdmin, wrap(async (req, res) => {
   const email = decodeURIComponent(req.params.email);
   if (email.toLowerCase() === req.session.user.email.toLowerCase()) {
     return res.redirect('/admin?notice=' + encodeURIComponent('You cannot remove your own account.'));
   }
-  users.remove(email);
+  await users.remove(email);
   res.redirect('/admin?notice=' + encodeURIComponent(`${email} was removed.`));
-});
+}));
 
 // ---------------- solution proxies ----------------
 
@@ -399,7 +404,24 @@ function start(port) {
   });
 }
 
-mountBuiltInSolutions().then(() => {
+function serverError(err, req, res, next) {
+  console.error('[hub] request failed:', err);
+  if (res.headersSent) return next(err);
+  res.status(500).render('error', { user: req.session?.user || null, code: 500, message: 'Something went wrong. Try again shortly.' });
+}
+
+async function boot() {
+  await users.init(SOLUTIONS.map((s) => s.id));
+  await sessions.init();
+  await mountBuiltInSolutions();
   app.use(notFound); // last, so it can't shadow the built-in solutions' routes
+  app.use(serverError);
   start(DEFAULT_PORT);
+}
+
+// Without its database the hub can't check anyone's password, so stop with a
+// clear reason in the log instead of serving a login page that can't work.
+boot().catch((err) => {
+  console.error('[hub] could not start:', err.message);
+  process.exit(1);
 });
