@@ -251,6 +251,13 @@
   .verdict.same .mark { background: var(--same-fg); color: var(--same-bg); }
   .verdict.diff { background: var(--diff-bg); color: var(--diff-fg); border-color: color-mix(in srgb, var(--diff-fg) 22%, transparent); }
   .verdict.diff .mark { background: var(--diff-fg); color: var(--diff-bg); }
+  .verdict.maybe { background: var(--amber-bg); color: var(--amber-fg); border-color: var(--amber-line); }
+  .verdict.maybe .mark { background: var(--amber-fg); color: var(--amber-bg); font-size: 14px; font-weight: 800; line-height: 1; }
+  .vhint { margin: 8px 4px 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
+  .qnotes { display: flex; gap: 10px; margin-top: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--amber-line); background: var(--amber-bg); color: var(--amber-fg); font-size: 13px; line-height: 1.45; }
+  .qnotes svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+  .qnotes strong { display: block; font-weight: 600; font-size: 14px; }
+  .qnotes span { display: block; }
   .verdict.busy { background: var(--amber-bg); color: var(--amber-fg); border-color: var(--amber-line); padding-left: 12px; justify-content: flex-start; }
   .problem { display: flex; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--recess); font-size: 13px; line-height: 1.45; }
   .problem svg { width: 18px; height: 18px; color: var(--muted); margin-top: 1px; }
@@ -358,7 +365,7 @@
         <output id="threshold-value" for="threshold"></output>
       </div>
       <div class="th-row"><span>More lenient</span><input type="range" id="threshold" min="0" max="1" step="0.01"><span>Stricter</span></div>
-      <p class="th-hint">Scores at or above this count as the same person. Higher is stricter.
+      <p class="th-hint"><span id="th-hint-text">Scores at or above this count as the same person. Higher is stricter.</span>
         <button type="button" class="btn-link" id="threshold-reset" hidden>Reset to default</button></p>
     </div>
     <div class="actions">
@@ -417,6 +424,7 @@
   const MAX_REFS = 10;
   const state = { groups: [], nextId: 1, busy: false, progress: null, error: "" };
   let defaultThreshold = null;
+  let possibleThreshold = null; // where "possibly the same person" starts (from /health)
   let thresholdOverride = null;
 
   const $ = (id) => document.getElementById(id);
@@ -615,9 +623,40 @@
     if (r.match === null) return el("div", { class: "problem" }, icon("pause"),
       el("div", {}, el("strong", {}, refNeedsFace(g) ? "Waiting for the reference face" : "Waiting for the reference photo"),
         refNeedsFace(g) ? "Choose a face in the reference photo first." : "Fix the reference photo to compare."));
-    return el("div", { class: `verdict ${r.match ? "same" : "diff"}` },
-      el("span", { class: "lbl" }, el("span", { class: "mark" }, icon(r.match ? "check" : "x")), r.match ? "Same person" : "Different person"),
-      el("span", { class: "score", title: "Similarity score (0–1)" }, r.score.toFixed(2)));
+    const v = verdictOf(r);
+    const look = { match: ["same", icon("check"), "Same person"], possible: ["maybe", "?", "Possibly the same person"], no_match: ["diff", icon("x"), "Different person"] }[v];
+    return el("div", {},
+      el("div", { class: `verdict ${look[0]}` },
+        el("span", { class: "lbl" }, el("span", { class: "mark" }, look[1]), look[2]),
+        el("span", { class: "score", title: "Similarity score (0–1)" }, r.score.toFixed(2))),
+      v === "possible" ? el("p", { class: "vhint" }, "Not certain. Look at both photos yourself before deciding.") : null,
+      qualityNote(g, r, v));
+  }
+
+  // "match" | "possible" | "no_match" for a scored result (older servers only sent a yes/no `match`).
+  const verdictOf = (r) => r.verdict || (r.match ? "match" : "no_match");
+
+  const QUALITY_TEXT = {
+    small_face: "the face is small in the photo",
+    blurry: "the photo is blurry or low resolution",
+    turned_head: "the head is turned to the side",
+  };
+  const qualityIssues = (result) => {
+    const f = result && result.selected_face !== null && result.selected_face !== undefined ? result.faces[result.selected_face] : null;
+    return ((f && f.quality && f.quality.issues) || []).map((code) => QUALITY_TEXT[code]).filter(Boolean);
+  };
+  // Low quality hurts a "no match" most (a real match can be missed), so say so there.
+  function qualityNote(g, r, v) {
+    const mine = qualityIssues(r), theirs = qualityIssues(g.ref && g.ref.result);
+    if (!mine.length && !theirs.length) return null;
+    const advice = v === "no_match" ? "This can hide a real match, so the result is less certain. Try a clearer photo that faces the camera."
+      : v === "possible" ? "This can lower the score, so it is less reliable."
+      : "The score was still high enough to match.";
+    return el("div", { class: "qnotes" }, icon("info"),
+      el("div", {}, el("strong", {}, "Photo quality may affect this result"),
+        mine.length ? el("span", {}, `This photo: ${mine.join("; ")}.`) : null,
+        theirs.length ? el("span", {}, `Reference photo: ${theirs.join("; ")}.`) : null,
+        el("span", {}, advice)));
   }
 
   function candidateCard(g, c) {
@@ -663,8 +702,10 @@
   }
   function groupSummary(g) {
     const scored = g.cands.filter((c) => c.result && c.result.match !== null);
-    return { scored: scored.length, same: scored.filter((c) => c.result.match).length, open: g.cands.length - scored.length };
+    const count = (v) => scored.filter((c) => verdictOf(c.result) === v).length;
+    return { scored: scored.length, same: count("match"), possible: count("possible"), open: g.cands.length - scored.length };
   }
+  const possibleText = (n) => (n ? ` ${plural(n, "other photo")} ${n === 1 ? "is" : "are"} possibly the same person.` : "");
   function groupBanner(g) {
     const n = g.cands.length;
     if (g.busy) {
@@ -683,10 +724,11 @@
         "Replace it with a clear photo of the person you know, then compare again.");
     }
     if (g.compared) {
-      const { scored, same, open } = groupSummary(g);
+      const { scored, same, possible, open } = groupSummary(g);
       return banner("success", icon("done"), "Comparison complete", [
         el("b", {}, `${same} of ${plural(scored, "photo")}`),
         ` ${same === 1 ? "shows" : "show"} the same person as the reference.`,
+        possibleText(possible),
         open ? ` ${plural(open, "photo")} ${open === 1 ? "needs" : "need"} your attention.` : ""]);
     }
     if (g.notice && g.ref) return banner("amber", icon("info"), "Some files were skipped", g.notice);
@@ -696,10 +738,12 @@
     if (state.error) return banner("danger", icon("alert"), "Can't reach the Face Match server", state.error);
     const done = state.groups.filter((g) => g.compared && refStatus(g) === "ok");
     if (state.busy || state.groups.length < 2 || done.length < 2) return null;
-    const totals = done.map(groupSummary).reduce((a, s) => ({ scored: a.scored + s.scored, same: a.same + s.same }), { scored: 0, same: 0 });
+    const totals = done.map(groupSummary).reduce((a, s) => ({ scored: a.scored + s.scored, same: a.same + s.same, possible: a.possible + s.possible }), { scored: 0, same: 0, possible: 0 });
     return banner("success", icon("done"), `Compared ${plural(done.length, "reference")}`, [
       el("b", {}, `${totals.same} of ${plural(totals.scored, "photo")}`),
-      ` ${totals.same === 1 ? "shows" : "show"} the same person as ${totals.same === 1 ? "its" : "their"} reference. Details are under each reference below.`]);
+      ` ${totals.same === 1 ? "shows" : "show"} the same person as ${totals.same === 1 ? "its" : "their"} reference.`,
+      possibleText(totals.possible),
+      " Details are under each reference below."]);
   }
 
   // ---- render ----
@@ -797,6 +841,10 @@
     slider.value = value;
     out.textContent = thresholdOverride === null ? `${value.toFixed(2)} (default)` : value.toFixed(2);
     resetTh.hidden = thresholdOverride === null;
+    const from = possibleThreshold === null ? null : Math.min(possibleThreshold, value);
+    $("th-hint-text").textContent = from !== null && from < value
+      ? `Scores at or above this count as the same person. From ${from.toFixed(2)} up to this they show as “possibly the same person”. Higher is stricter.`
+      : "Scores at or above this count as the same person. Higher is stricter.";
   }
   const recompareScored = () => runComparisons(state.groups.filter((g) => g.compared));
   slider.addEventListener("input", () => { thresholdOverride = Number(slider.value); showThreshold(); render(); });
@@ -826,7 +874,7 @@
   $("add-group").addEventListener("click", addGroup);
 
   state.groups.push(makeGroup());
-  fetch("health").then((r) => r.json()).then((h) => { defaultThreshold = h.threshold; showThreshold(); })
+  fetch("health").then((r) => r.json()).then((h) => { defaultThreshold = h.threshold; possibleThreshold = h.possible_threshold ?? null; showThreshold(); })
     .catch(() => { state.error = "Check that the server is still running, then reload the page."; render(); });
   render();
 })();

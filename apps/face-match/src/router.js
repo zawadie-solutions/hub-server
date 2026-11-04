@@ -45,7 +45,12 @@ function parseOptionalInt(raw, name) {
 const round = (v, digits) => Math.round(v * 10 ** digits) / 10 ** digits;
 
 function faceJson(face, index) {
-  return { index, bbox: face.bbox.map((v) => round(v, 1)), det_score: round(face.detScore, 4) };
+  return {
+    index,
+    bbox: face.bbox.map((v) => round(v, 1)),
+    det_score: round(face.detScore, 4),
+    ...(face.quality ? { quality: face.quality } : {}),
+  };
 }
 
 function imageJson(img) {
@@ -60,13 +65,15 @@ function imageJson(img) {
 function reportJson(report) {
   return {
     status: report.complete ? "ok" : "incomplete",
-    threshold: report.threshold,
+    threshold: report.threshold, // the match line; at or above it is "same person"
+    possible_threshold: report.possibleThreshold, // "possibly the same person" starts here
     reference: imageJson(report.reference),
     results: report.candidates.map((c) => ({
       candidate_index: c.index,
       ...imageJson(c.image),
       score: c.score === null ? null : round(c.score, 4),
-      match: c.match,
+      verdict: c.verdict, // "match" | "possible" | "no_match" | null (not scored)
+      match: c.match, // true only for a confident "match"
     })),
   };
 }
@@ -108,8 +115,10 @@ function createRouter({ manager, settings, requestLog = () => {} }) {
       status: "ok",
       ready: manager.engine !== null,
       model: manager.engine ? manager.engine.modelName : null,
-      threshold: settings.threshold,
-      threshold_source: settings.thresholdSource,
+      threshold: settings.matchThreshold,
+      threshold_source: settings.matchThresholdSource,
+      possible_threshold: settings.possibleThreshold,
+      possible_threshold_source: settings.possibleThresholdSource,
       ...(manager.error ? { load_error: manager.error } : {}),
     });
   });
@@ -134,8 +143,10 @@ function createRouter({ manager, settings, requestLog = () => {} }) {
       if (candidates.length === 0) throw new BadRequest("Missing 'candidates' file(s)");
 
       const fields = req.body || {};
+      // `threshold` in the request overrides the match line only; "possible" still starts at the configured
+      // possible line (or at the match line, if that is lower).
       const threshold =
-        fields.threshold === undefined || String(fields.threshold).trim() === "" ? settings.threshold : Number(fields.threshold);
+        fields.threshold === undefined || String(fields.threshold).trim() === "" ? settings.matchThreshold : Number(fields.threshold);
       try {
         validateThreshold(threshold);
       } catch (err) {
@@ -165,7 +176,7 @@ function createRouter({ manager, settings, requestLog = () => {} }) {
       const analyzed = [];
       for (let i = 0; i < candidates.length; i++) analyzed.push(await analyze(candidates[i], picks.get(i) ?? null));
 
-      const body = reportJson(matchReference(ref, analyzed, threshold));
+      const body = reportJson(matchReference(ref, analyzed, threshold, settings.possibleThreshold));
       // Metadata only (FR5): no pixels and no embeddings ever reach the log.
       requestLog({
         request_id: crypto.randomUUID().replaceAll("-", ""),

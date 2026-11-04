@@ -1,6 +1,8 @@
 {
-  "threshold": 0.2589,
-  "threshold_source": "FG-NET threshold at FAR=1% (evaluation run 2026-09-23 11:29 UTC)",
+  "match_threshold": 0.45,
+  "match_threshold_source": "Benchmark 2026-11: no different-person pair scored this high among adult FG-NET pairs or CFP-FP pairs (FAR 0.000%); FAR 0.008% over all FG-NET pairs, childhood photos included",
+  "possible_threshold": 0.2589,
+  "possible_threshold_source": "FG-NET threshold at FAR=1% (evaluation run 2026-09-23 11:29 UTC)",
   "model_name": "buffalo_l",
   "det_size": 640,
   "det_thresh": 0.5,

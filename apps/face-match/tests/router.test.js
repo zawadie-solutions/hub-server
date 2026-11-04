@@ -1,6 +1,8 @@
 // Router tests with a fake detector: an image's colour encodes its faces.
-//   red channel  -> identity of face 0 (face k has identity red + k)
-//   blue channel -> number of faces (blue // 50)
+//   red channel   -> identity of face 0 (face k has identity red + k)
+//   green channel -> how far the face is rotated away from its identity's axis (angle = green / 100 rad),
+//                    so two photos of the same identity score cos(angle difference): green 0 vs 0 -> 1.0
+//   blue channel  -> number of faces (blue // 50)
 // The router is mounted at /face-match on a real Express server, like the hub does.
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import express from 'express';
@@ -15,20 +17,32 @@ const fakeEngine = {
   modelName: 'fake',
   async detect(image) {
     const r = image.data[0];
+    const angle = image.data[1] / 100;
     const b = image.data[2];
     const faces = [];
     for (let k = 0; k < Math.floor(b / 50); k++) {
       const embedding = new Float32Array(16);
-      embedding[(r + k) % 16] = 1;
-      faces.push({ bbox: [0, 0, 10 - k, 10 - k], detScore: 0.99, embedding });
+      embedding[(r + k) % 16] = Math.cos(angle);
+      embedding[(r + k + 8) % 16] = Math.sin(angle);
+      // A 9 px wide image stands in for a poor-quality photo; the real engine measures this from the pixels.
+      const quality = image.width === 9
+        ? { level: 'fair', issues: ['blurry'], face_px: 200, sharpness: 40, head_turn: 0 }
+        : { level: 'good', issues: [], face_px: 200, sharpness: 900, head_turn: 0 };
+      faces.push({ bbox: [0, 0, 10 - k, 10 - k], detScore: 0.99, embedding, quality });
     }
     return faces;
   },
 };
 
-const settings = { threshold: 0.5, thresholdSource: 'test' };
-const png = (identity, nFaces = 1) =>
-  sharp({ create: { width: 8, height: 8, channels: 3, background: { r: identity, g: 0, b: nFaces * 50 } } }).png().toBuffer();
+const settings = {
+  matchThreshold: 0.5,
+  matchThresholdSource: 'test match',
+  possibleThreshold: 0.3,
+  possibleThresholdSource: 'test possible',
+};
+const png = (identity, nFaces = 1, angle = 0, width = 8) =>
+  sharp({ create: { width, height: 8, channels: 3, background: { r: identity, g: angle, b: nFaces * 50 } } }).png().toBuffer();
+// A same-identity photo scores cos(angle / 100) against an angle-0 photo: 121 -> 0.353, 80 -> 0.697.
 
 const manager = { engine: fakeEngine, error: null, started: 0, start() { this.started += 1; } };
 const logged = [];
@@ -63,7 +77,48 @@ describe('POST /match', () => {
     expect(status).toBe(200);
     expect(body.status).toBe('ok');
     expect(body.threshold).toBe(0.5);
+    expect(body.possible_threshold).toBe(0.3);
     expect(body.results.map((c) => [c.candidate_index, c.match, c.score])).toEqual([[0, true, 1], [1, false, 0]]);
+    expect(body.results.map((c) => c.verdict)).toEqual(['match', 'no_match']);
+  });
+
+  it('sorts scores into three outcomes: match, possible, no match', async () => {
+    // Scores against the angle-0 reference: 1.0, ~0.70, ~0.35, 0.
+    const { body } = await match(await png(3), [await png(3), await png(3, 1, 80), await png(3, 1, 121), await png(7)]);
+    expect(body.results.map((c) => c.verdict)).toEqual(['match', 'match', 'possible', 'no_match']);
+    expect(body.results[1].score).toBeCloseTo(Math.cos(0.8), 3);
+    expect(body.results[2].score).toBeCloseTo(Math.cos(1.21), 3);
+    // `match` is true only for a confident match, never for "possible".
+    expect(body.results.map((c) => c.match)).toEqual([true, true, false, false]);
+  });
+
+  it('puts the boundaries on the inclusive side', async () => {
+    // Score exactly 0.5 / 0.3 would need float luck; check the rule with thresholds equal to the scores instead.
+    const cand = await png(3, 1, 121);
+    const score = (await match(await png(3), [cand])).body.results[0].score;
+    expect((await match(await png(3), [cand], { threshold: score })).body.results[0].verdict).toBe('match');
+  });
+
+  it('lets the threshold override move the match line, and keeps the possible band consistent', async () => {
+    const cand = await png(3, 1, 121); // score ~0.35
+    const strict = (await match(await png(3), [cand], { threshold: 0.9 })).body;
+    expect(strict.threshold).toBe(0.9);
+    expect(strict.possible_threshold).toBe(0.3);
+    expect(strict.results[0].verdict).toBe('possible');
+    const lenient = (await match(await png(3), [cand], { threshold: 0.2 })).body;
+    expect(lenient.results[0].verdict).toBe('match');
+    // A match line below the possible line leaves no possible band: it can never sit above the match line.
+    expect(lenient.possible_threshold).toBe(0.2);
+  });
+
+  it('reports photo quality for each face, and quality never changes the verdict', async () => {
+    const { body } = await match(await png(3), [await png(3), await png(3, 1, 0, 9)]);
+    const q = (face) => face.faces[face.selected_face].quality;
+    expect(q(body.reference)).toMatchObject({ level: 'good', issues: [] });
+    expect(q(body.results[0])).toMatchObject({ level: 'good', issues: [] });
+    expect(q(body.results[1])).toMatchObject({ level: 'fair', issues: ['blurry'], sharpness: 40 });
+    // The blurry candidate still scores 1.0 and is still a match: warnings explain, they don't decide.
+    expect(body.results[1].verdict).toBe('match');
   });
 
   it('accepts a threshold override', async () => {
@@ -186,7 +241,7 @@ describe('page and assets', () => {
 
   it('reports health', async () => {
     const body = await (await fetch(`${base}/health`)).json();
-    expect(body).toMatchObject({ status: 'ok', ready: true, model: 'fake', threshold: 0.5 });
+    expect(body).toMatchObject({ status: 'ok', ready: true, model: 'fake', threshold: 0.5, possible_threshold: 0.3 });
   });
 });
 

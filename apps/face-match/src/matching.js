@@ -1,6 +1,6 @@
 "use strict";
 // Model-free matching logic: face selection per image and reference-vs-candidate scoring.
-// Port of facematch/matching.py; keep the two in step.
+// Derived from facematch/matching.py (Python original), which still has only match / no match.
 
 const ImageStatus = Object.freeze({
   OK: "ok",
@@ -56,17 +56,29 @@ function cosineScore(a, b) {
   return Math.min(Math.max(sim, 0), 1);
 }
 
-/** Score each candidate against the reference. A pair matches when score >= threshold. */
-function matchReference(reference, candidates, threshold) {
+const Verdict = Object.freeze({
+  MATCH: "match", // score >= matchThreshold
+  POSSIBLE: "possible", // possibleThreshold <= score < matchThreshold: a person should look
+  NO_MATCH: "no_match", // score < possibleThreshold
+});
+
+/**
+ * Score each candidate against the reference and sort it into one of three outcomes.
+ * `threshold` is the line for a confident match; `possibleThreshold` is where "possible" starts.
+ * If the match line is set below the possible line, there is no possible band (never above the match line).
+ */
+function matchReference(reference, candidates, threshold, possibleThreshold = threshold) {
+  const possible = Math.min(possibleThreshold, threshold);
   const refEmb = reference.embedding;
   const results = candidates.map((image, index) => {
     const candEmb = image.embedding;
-    if (refEmb === null || candEmb === null) return { index, image, score: null, match: null };
+    if (refEmb === null || candEmb === null) return { index, image, score: null, verdict: null, match: null };
     const score = cosineScore(refEmb, candEmb);
-    return { index, image, score, match: score >= threshold };
+    const verdict = score >= threshold ? Verdict.MATCH : score >= possible ? Verdict.POSSIBLE : Verdict.NO_MATCH;
+    return { index, image, score, verdict, match: verdict === Verdict.MATCH };
   });
   const complete = reference.status === ImageStatus.OK && candidates.every((c) => c.status === ImageStatus.OK);
-  return { reference, candidates: results, threshold, complete };
+  return { reference, candidates: results, threshold, possibleThreshold: possible, complete };
 }
 
-module.exports = { ImageStatus, ImageAnalysis, selectFace, cosineScore, matchReference };
+module.exports = { ImageStatus, Verdict, ImageAnalysis, selectFace, cosineScore, matchReference };
