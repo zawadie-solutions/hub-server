@@ -7,6 +7,7 @@
 const path = require("path");
 const ort = require("onnxruntime-node");
 const { resizeBilinear, padBorder, warpAffine, estimateSimilarity } = require("./imaging");
+const { assessQuality } = require("./quality");
 
 const DET_FILE = "det_10g.onnx";
 const REC_FILE = "w600k_r50.onnx";
@@ -120,6 +121,7 @@ class FaceEngine {
         bbox: [Math.max(x1, 0), Math.max(y1, 0), Math.min(x2, w), Math.min(y2, h)],
         detScore: f.score,
         embedding: f.embedding,
+        quality: f.quality,
       };
     });
     const area = (d) => (d.bbox[2] - d.bbox[0]) * (d.bbox[3] - d.bbox[1]);
@@ -130,7 +132,10 @@ class FaceEngine {
   async _detectAndEmbed(image) {
     const found = await this._detectRaw(image);
     const out = [];
-    for (const f of found) out.push({ ...f, embedding: await this._embed(image, f.kps) });
+    for (const f of found) {
+      const { embedding, crop } = await this._embed(image, f.kps);
+      out.push({ ...f, embedding, quality: assessQuality({ box: f.box, kps: f.kps, crop }) });
+    }
     return out;
   }
 
@@ -201,7 +206,7 @@ class FaceEngine {
     return keep.map((i) => rows[i]);
   }
 
-  /** Align the face to the 112x112 ArcFace template and return its L2-normalized embedding. */
+  /** Align the face to the 112x112 ArcFace template; returns its L2-normalized embedding and the aligned crop. */
   async _embed(image, kps) {
     const M = estimateSimilarity(kps, ARCFACE_DST);
     const crop = warpAffine(image, M, REC_SIZE, REC_SIZE);
@@ -222,7 +227,7 @@ class FaceEngine {
     norm = Math.sqrt(norm);
     const emb = new Float32Array(raw.length);
     for (let i = 0; i < raw.length; i++) emb[i] = raw[i] / norm;
-    return emb;
+    return { embedding: emb, crop };
   }
 
   async close() {

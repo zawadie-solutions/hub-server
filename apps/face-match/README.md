@@ -24,9 +24,49 @@ login and per-solution access check, so it has no login of its own.
   All its URLs are relative, because it lives under `/face-match/`.
 
 `POST /match` takes multipart `reference` and `candidates` files, plus optional `reference_face`,
-`candidate_faces` (`"cand:face,..."`) and `threshold`. It answers 200 with a status per image
-(`ok`, `no_face`, `multiple_faces`, `invalid_image`, `invalid_face_index`); the engine never picks
-one of several faces itself. 422 means a malformed parameter, 503 means the models are still loading.
+`candidate_faces` (`"cand:face,..."`) and `threshold` (the match line, see below). It answers 200 with
+a status per image (`ok`, `no_face`, `multiple_faces`, `invalid_image`, `invalid_face_index`); the
+engine never picks one of several faces itself. 422 means a malformed parameter, 503 means the models
+are still loading.
+
+## Three outcomes
+
+Each scored candidate gets a `verdict`, from its cosine similarity score (0 to 1):
+
+| Verdict | Score | Meaning |
+|---|---|---|
+| `match` | at or above the **match line** (0.45) | Same person. No different-person pair in the benchmark scored this high (adult FG-NET pairs and CFP-FP: 0.000% false matches; 0.008% across all FG-NET pairs, childhood photos included). |
+| `possible` | from the **possible line** (0.2589) up to the match line | Maybe the same person; a human should look. 0.2589 is the FG-NET threshold at 1% false matches. |
+| `no_match` | below the possible line | Different person. |
+
+`match` in the response is `true` only for a confident match; `verdict` carries the three-way answer.
+The `threshold` form field moves the match line only. If it is set below the possible line there is
+no possible band (the possible line never sits above the match line), and the response's
+`possible_threshold` shows the line actually used.
+
+Why not one line: a single strict line (say 0.50) almost never wrongly matches, but on the benchmark it
+also misses about 1 in 7 true adult matches (85% recognised) and half of the profile-angle pairs, and
+only half of pairs 30+ years apart. A single lenient line (0.26) accepts about 1 in 150 different-person
+pairs. Three outcomes keep the strict line's safety and stop true matches from being reported as
+"different person".
+
+## Photo-quality warnings
+
+Each detected face carries `quality: {level, issues, face_px, sharpness, head_turn}`, and the page
+shows a note when the reference or the candidate has an issue:
+
+| Issue | Rule | What the measurement showed |
+|---|---|---|
+| `small_face` | shorter side of the face box under 80 px | Flags 1% of good photos; when it fired, the match was lost 9 times in 10 |
+| `blurry` | Laplacian variance of the aligned 112 px crop under 100 | Flags 0% of good CFP photos, 11% of old FG-NET scans; when it fired, the match was lost 19 times in 20 |
+| `turned_head` | nose offset from the eye midpoint at least 1.0 eye distances | Weak evidence: median score 0.46 against 0.52, from only 20 pairs per group |
+
+These rules were chosen from measurements on 80 same-person CFP pairs with the second photo degraded
+(blur, shrink-and-enlarge, heavy JPEG, all three). Warnings **never change the verdict**, and they
+catch only about a quarter of the matches that degradation cost: most losses show no simple image
+signal. The possible band is what catches those, so do not read "no warning" as "reliable".
+Tried and rejected: low detection confidence (weak predictor, flags 16% of old scans) and the model's
+feature norm (it rises, not falls, when photos degrade).
 
 ## Settings
 
@@ -36,7 +76,8 @@ Defaults are in `config/facematch.json`. Override in the hub's `.env`:
 |---|---|
 | `FACEMATCH_THREADS` | CPU threads per model run (default 3). See below. |
 | `FACEMATCH_PRELOAD` | `1` loads the models at hub start instead of on first use. |
-| `FACEMATCH_THRESHOLD` | Override the match threshold (0 to 1). Don't, without a new measurement. |
+| `FACEMATCH_MATCH_THRESHOLD` | Override the match line (0 to 1). Don't, without a new measurement. |
+| `FACEMATCH_POSSIBLE_THRESHOLD` | Override where "possible" starts. Must not be above the match line. |
 | `FACEMATCH_MODEL_DIR` | Where the two model files live. |
 
 **Models:** `det_10g.onnx` and `w600k_r50.onnx` from the InsightFace `buffalo_l` pack. The first use
@@ -55,13 +96,17 @@ app folder on deploy; set `log_path` to an absolute path to keep it.
 
 ## Accuracy
 
-The threshold (0.2589) was measured on the Python pipeline at FAR = 1% on FG-NET. The Node engine was
-benchmarked against the same data and gave the same results:
+The possible line (0.2589) was measured on the Python pipeline at FAR = 1% on FG-NET. The Node engine
+was benchmarked against the same data and gave the same results at that line:
 
 | Target | Python | Node | Goal |
 |---|---|---|---|
 | Age gap, adult pairs (FG-NET): TAR / FAR | 99.48% / 0.66% | 99.48% / 0.64% | TAR ≥ 90%, FAR ≤ 1% |
 | Pose (CFP-FP): TAR / FAR | 96.29% / 0.00% | 96.26% / 0.00% | TAR ≥ 85%, FAR ≤ 1% |
+
+At the match line (0.45) the same benchmark gives: adult FG-NET pairs 93.1% recognised at 0.000% false
+matches, CFP-FP 67.3% at 0.000%. So a confident match is rarer than a "possible" one, by design.
+Scores in the middle band are a judgement call for a person, not a failure of the tool.
 
 Per-pair scores differ from Python by 0.0013 on average. The alignment and embedding stages are exact
 given the same landmarks; the small remaining difference comes from OpenCV's image resize, which can't
@@ -78,8 +123,23 @@ threshold; a pipeline that produces different embeddings needs its own measureme
 npx vitest run apps/face-match
 ```
 
-They use a fake detector and need no model, so they don't prove the real engine works. For that, open
-Face Match in a running hub and compare two photos of the same person and one of someone else.
+They use a fake detector and need no model, so they don't prove the real engine works. For that, try it
+with real photos (next section): compare two photos of the same person and one of someone else.
+
+## Try it on your computer
+
+```bash
+npm install            # once, in hub-server
+npm run face-match:dev
+```
+
+Then open http://localhost:8100/. No hub login, no database, no `.env`. It listens on this computer
+only (there is no login, and the photos are biometric data), and stops with Ctrl+C. `PORT` changes the
+port. If `~/.insightface/models/buffalo_l/` already holds the models (any earlier InsightFace use does),
+it starts in a few seconds; otherwise it downloads them first (about 280 MB). Defaults come from
+`config/facematch.json`, so you can try other lines without editing code, for example in PowerShell
+`$env:FACEMATCH_MATCH_THRESHOLD = "0.5"; npm run face-match:dev`. Requests are logged (metadata only) to
+`apps/face-match/logs/facematch.log`.
 
 ## Licence and data
 
