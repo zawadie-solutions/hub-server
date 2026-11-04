@@ -7,6 +7,7 @@
   "scripts": {
     "start": "tsx server.js",
     "test": "vitest run",
+    "face-match:dev": "node apps/face-match/dev.js",
     "typecheck": "tsc --noEmit -p apps/google-review-monitor && tsc --noEmit -p apps/company-research",
     "company-research:import-python": "tsx apps/company-research/scripts/importFromPython.ts",
     "company-research:build-ui": "npm --prefix apps/company-research/frontend install && npm --prefix apps/company-research/frontend run build",

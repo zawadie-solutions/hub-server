@@ -337,7 +337,7 @@
       <span>Face <span class="hl">Match</span><span class="brand-sub">Zawadie Solutions</span></span>
     </div>
     <div class="topbar-actions">
-      <span class="pill privacy"><i data-icon="lock"></i><span>Processed on this computer · Not saved</span></span>
+      <span class="pill privacy"><i data-icon="lock"></i><span>Processed on the Zawadie server · Not saved</span></span>
       <button type="button" class="theme-toggle" id="theme-toggle"></button>
     </div>
   </div>
@@ -346,7 +346,7 @@
 <section class="intro">
   <div class="wrap">
     <h1>Compare photos across the years</h1>
-    <p>Check whether photos taken years apart show the same person. Photos are processed on this computer and are not saved.</p>
+    <p>Check whether photos taken years apart show the same person. Photos are processed on the Zawadie server and are not saved.</p>
   </div>
 </section>
 
@@ -376,7 +376,7 @@
 </div>
 
 <footer>
-  <div class="wrap"><i data-icon="shield"></i>Photos and face data are not saved. Everything runs on this computer.</div>
+  <div class="wrap"><i data-icon="shield"></i>Photos and face data are not saved. Everything runs on the Zawadie server.</div>
 </footer>
 
 <script>
@@ -710,7 +710,7 @@
     const n = g.cands.length;
     if (g.busy) {
       return banner("", el("span", { class: "spinner" }), "Comparing photos…",
-        `Comparing ${plural(n, "photo")} with this reference on this computer. This usually takes a few seconds.`,
+        `Comparing ${plural(n, "photo")} with this reference on the Zawadie server. This usually takes a few seconds.`,
         el("div", { class: "progress" }, el("span")));
     }
     if (g.queued) return banner("", icon("pause"), "Waiting to compare", "This reference is compared after the ones above it.");

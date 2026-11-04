@@ -123,8 +123,23 @@ threshold; a pipeline that produces different embeddings needs its own measureme
 npx vitest run apps/face-match
 ```
 
-They use a fake detector and need no model, so they don't prove the real engine works. For that, open
-Face Match in a running hub and compare two photos of the same person and one of someone else.
+They use a fake detector and need no model, so they don't prove the real engine works. For that, try it
+with real photos (next section): compare two photos of the same person and one of someone else.
+
+## Try it on your computer
+
+```bash
+npm install            # once, in hub-server
+npm run face-match:dev
+```
+
+Then open http://localhost:8100/. No hub login, no database, no `.env`. It listens on this computer
+only (there is no login, and the photos are biometric data), and stops with Ctrl+C. `PORT` changes the
+port. If `~/.insightface/models/buffalo_l/` already holds the models (any earlier InsightFace use does),
+it starts in a few seconds; otherwise it downloads them first (about 280 MB). Defaults come from
+`config/facematch.json`, so you can try other lines without editing code, for example in PowerShell
+`$env:FACEMATCH_MATCH_THRESHOLD = "0.5"; npm run face-match:dev`. Requests are logged (metadata only) to
+`apps/face-match/logs/facematch.log`.
 
 ## Licence and data
 
