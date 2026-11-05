@@ -88,9 +88,9 @@ module.exports = [
     description:
       'Reviews and manages comments on our locations’ social pages, with AI-drafted replies and an admin portal for staff.',
     status: 'available',
-    // Hosted separately on Vercel, so the hub just links out to it instead
+    // Hosted separately on Render, so the hub just links out to it instead
     // of proxying a local server.
-    externalUrl: 'https://cm-system-sable.vercel.app/',
+    externalUrl: 'https://zawadie-cm-api.onrender.com/',
     icon: 'chat',
   },
 ];
