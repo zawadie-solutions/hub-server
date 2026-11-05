@@ -135,6 +135,66 @@ export const dashboardHtml = `<!doctype html>
   .themebtn:hover{background:var(--magenta-dark)}
   .themebtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   .themebtn .sun{display:none}
+  .helpbtn{font-weight:700;font-size:15px}
+  .topbar .helpbtn+.themebtn{margin-left:0}
+  /* "How to use it for now": shown on arrival until ticked off, and from the ? button. */
+  .howto{width:min(520px,calc(100vw - 24px));max-height:calc(100dvh - 32px);padding:0;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.35)}
+  .howto::backdrop{background:rgba(15,23,42,.5)}
+  .howto[open]{animation:popin .18s ease-out;display:flex;flex-direction:column}
+  .howto .hd{display:flex;gap:12px;align-items:flex-start;padding:20px 22px 0}
+  .howto .ic{flex:none;width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:var(--magenta-tint);color:var(--magenta-ink);font-size:19px}
+  .howto h2{margin:0;font-size:17px;letter-spacing:-.01em}
+  .howto .lead{margin:3px 0 0;font-size:13px;color:var(--muted)}
+  .howto .bd{padding:14px 22px 4px;overflow-y:auto}
+  .howto ol{margin:0;padding:0;list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:10px}
+  .howto li{counter-increment:s;display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;font-size:13.5px}
+  .howto li::before{content:counter(s);width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--magenta-ink);background:var(--magenta-tint)}
+  .howto li b{font-weight:600}
+  .howto li .d{display:block;color:var(--muted);font-size:12.5px;margin-top:1px}
+  .howto li .w{display:block;margin-top:4px;padding:5px 8px;border-radius:7px;background:var(--hover);font-size:12px;color:var(--text)}
+  .howto li .w i,.guide-pg i.ui{font-style:normal;font-weight:600;color:var(--magenta-ink)}
+  .howto .ft-r{display:flex;align-items:center;gap:14px;margin-left:auto}
+  .howto .guide{font-size:13px;font-weight:600;color:var(--magenta-ink);text-decoration:none}
+  .howto .guide:hover{text-decoration:underline}
+  .howto .ok{margin:14px 0 0;padding:10px 12px;border-radius:10px;font-size:12.5px;background:var(--green-tint);color:var(--green-dark)}
+  .howto .ft{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:16px 22px 18px}
+  .howto .ft label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer}
+  .howto .ft input{width:16px;height:16px;margin:0;accent-color:var(--magenta)}
+  @media (prefers-reduced-motion:reduce){.howto[open]{animation:none}}
+  /* ---- Help: the user guide ---- */
+  .guide{display:grid;grid-template-columns:200px minmax(0,1fr);gap:24px;align-items:start}
+  .toc{position:sticky;top:0;display:flex;flex-direction:column;gap:2px}
+  .toc button{font:inherit;font-size:13px;font-weight:500;text-align:left;color:var(--muted);background:none;border:0;border-left:2px solid var(--border);padding:7px 12px;cursor:pointer}
+  .toc button:hover{color:var(--text);border-left-color:var(--muted)}
+  .toc button.on{color:var(--magenta-ink);border-left-color:var(--magenta);font-weight:600}
+  .gbody{display:flex;flex-direction:column;gap:16px;min-width:0;max-width:760px}
+  .gbody .card{padding:20px 22px;scroll-margin-top:12px}
+  .gbody h2{font-size:17px;margin:0 0 6px;letter-spacing:-.01em}
+  .gbody h3{font-size:14px;margin:18px 0 6px}
+  .gbody p,.gbody li,.gbody dd{font-size:13.5px;line-height:1.6}
+  .gbody p{margin:6px 0}
+  .gbody ul,.gbody ol{margin:6px 0;padding-left:20px;display:flex;flex-direction:column;gap:5px}
+  .gbody b{font-weight:600}
+  .gbody .chip{vertical-align:1px}
+  .gbody dl{margin:6px 0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 14px;align-items:baseline}
+  .gbody dt{font-weight:600;font-size:13.5px}
+  .gbody dd{margin:0}
+  .gbody dl.faq{grid-template-columns:minmax(0,1fr);gap:2px}
+  .gbody dl.faq dt{margin-top:10px}
+  .gbody dl.faq dt:first-child{margin-top:0}
+  .gbody dl.faq dd{color:var(--muted)}
+  .gnote{margin-top:12px!important;padding:10px 12px;border-radius:10px;background:var(--magenta-tint);color:var(--magenta-ink);font-weight:500}
+  @media (max-width:900px){
+    .guide{grid-template-columns:minmax(0,1fr)}
+    .toc{position:static;flex-direction:row;flex-wrap:wrap;gap:6px}
+    .toc button{border:1px solid var(--border);border-radius:999px;padding:5px 11px;background:var(--surface)}
+    .toc button.on{border-color:var(--magenta)}
+  }
+  @media (max-width:640px){
+    .gbody .card{padding:16px}
+    .gbody dl{grid-template-columns:minmax(0,1fr);gap:2px}
+    .gbody dl dd{margin-bottom:8px}
+  }
   :root[data-theme="dark"] .themebtn .sun{display:block}
   :root[data-theme="dark"] .themebtn .moon{display:none}
   .logout{font:inherit;font-size:12.5px;font-weight:600;color:var(--white);background:none;border:1px solid rgba(255,255,255,.55);border-radius:7px;padding:5px 11px;cursor:pointer;white-space:nowrap}
@@ -238,6 +298,44 @@ export const dashboardHtml = `<!doctype html>
   .removed-list .where{color:var(--muted);font-weight:500;font-size:12.5px}
   .removed-list .right{display:flex;align-items:center;gap:10px;margin-left:auto}
   .removed-list .when{color:var(--muted);font-size:12.5px;white-space:nowrap}
+  /* Removed list tools: who worked on it, the order, and how many are shown. */
+  .rtools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px}
+  /* Worked on by: a pill button opening a menu (the month picker's look); sort: a three-way toggle. */
+  .rwho{position:relative;min-width:0}
+  .rwho-btn{display:inline-flex;align-items:center;gap:8px;max-width:100%;height:34px;padding:0 10px 0 5px;font:inherit;font-size:13px;font-weight:600;color:var(--text);background:var(--surface);border:1px solid var(--red-line);border-radius:999px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+  .rwho-btn:hover,.rwho-btn[aria-expanded="true"]{border-color:var(--red);box-shadow:0 1px 4px rgba(153,27,27,.12)}
+  .rwho-btn .lbl{color:var(--muted);font-weight:500}
+  .rwho-btn .val{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rwho-btn .chev{flex:none;width:13px;height:13px;fill:none;stroke:var(--muted);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;transition:transform .18s}
+  .rwho-btn[aria-expanded="true"] .chev{transform:rotate(180deg)}
+  .av{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:700;letter-spacing:.02em;color:var(--magenta-ink);background:var(--magenta-tint)}
+  .av.all{color:var(--text);background:var(--hover)}
+  .av.none{color:var(--muted);background:var(--hover)}
+  .av svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .rwho .mb-pop{left:0;width:min(320px,calc(100vw - 32px));max-height:min(420px,60vh);overflow:auto;overscroll-behavior:contain}
+  .rwho .mb-item .n{margin-left:auto;padding-left:8px;font-size:12px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
+  .rwho .mb-item[aria-checked="true"] .n{color:var(--magenta-ink)}
+  .rwho .mb-item .check{margin-left:6px}
+  .rwho .mb-item.zero .name{color:var(--muted);font-weight:500}
+  .rwho .mb-item.zero .n{font-weight:500}
+  .rwho .mb-item.zero:disabled{opacity:.8}
+  .rseg{display:inline-flex;height:34px;padding:2px;gap:2px;background:var(--surface);border:1px solid var(--red-line);border-radius:999px}
+  .rseg button{font:inherit;font-size:12.5px;font-weight:600;color:var(--muted);background:none;border:0;border-radius:999px;padding:0 12px;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s}
+  .rseg button:hover{color:var(--text)}
+  .rseg button[aria-pressed="true"]{color:#fff;background:var(--magenta)}
+  /* The friendly note about people with nothing removed yet. */
+  .rnote{display:flex;gap:10px;align-items:flex-start;margin-top:10px;padding:10px 12px;background:var(--surface);border:1px dashed var(--green-line);border-radius:10px;font-size:12.5px;color:var(--text)}
+  .rnote .ic{flex:none;font-size:15px;line-height:1.3}
+  .rnote b{font-weight:600}
+  .rnote .sub{color:var(--muted)}
+  .rtools .shown{margin-left:auto;font-size:12.5px;color:var(--red);opacity:.85;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .pager{display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap;margin-top:12px}
+  .pager button{font:inherit;font-size:13px;font-weight:600;min-width:34px;height:34px;padding:0 10px;color:var(--text);background:var(--surface);border:1px solid var(--red-line);border-radius:8px;cursor:pointer;font-variant-numeric:tabular-nums;display:inline-flex;align-items:center;justify-content:center;gap:4px}
+  .pager button:hover:not(:disabled){border-color:var(--red)}
+  .pager button[aria-current="page"]{color:#fff;background:var(--magenta);border-color:var(--magenta)}
+  .pager button:disabled{opacity:.45;cursor:default}
+  .pager .gap{min-width:20px;text-align:center;color:var(--muted)}
+  .pager svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
   .review-list{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column}
   .review-list li{padding:10px 0;border-top:1px solid var(--border)}
   .review-list .top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
@@ -350,7 +448,7 @@ export const dashboardHtml = `<!doctype html>
   @media (max-width:900px){
     .cfg{column-count:1}
     .shell{grid-template-columns:minmax(0,1fr);grid-template-rows:52px auto minmax(0,1fr)}
-    .rail{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:0 10px 8px}
+    .rail{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;padding:0 10px 8px}
     .rail a{flex-direction:row;justify-content:center;gap:6px;padding:7px 6px;font-size:12.5px;white-space:nowrap}
     .rail svg{width:16px;height:16px}
     .panel{border-top-right-radius:18px}
@@ -412,6 +510,9 @@ export const dashboardHtml = `<!doctype html>
     .activity .when{width:auto}
     .seg{display:flex;width:100%}
     .seg button{flex:1;padding:7px 4px}
+    .rtools .shown{margin-left:0;width:100%;order:3}
+    .rseg{flex:1}
+    .rseg button{flex:1;padding:0 6px}
     /* Tables become one card per row, each value labelled. */
     table.stack{min-width:0}
     table.stack thead{display:none}
@@ -427,6 +528,30 @@ export const dashboardHtml = `<!doctype html>
   @keyframes sheetin{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
   @media (prefers-reduced-motion:reduce){.runopts{animation:none}.sidehead .chev{transition:none}}
 </style></head><body>
+<!-- Temporary: while the scraper runs on Vercel's free plan. Edit or remove once it moves to ngrok. -->
+<dialog class="howto" id="howto" aria-labelledby="howtoTitle">
+  <div class="hd">
+    <span class="ic" aria-hidden="true">💡</span>
+    <div>
+      <h2 id="howtoTitle">How to use the monitor for now</h2>
+      <p class="lead">Reviews are checked by our scraper on Vercel's free plan, which allows only a limited number of checks a month. Until we move it to ngrok, please:</p>
+    </div>
+  </div>
+  <div class="bd">
+    <ol>
+      <li><span><b>Check one location at a time.</b><span class="d">That's about 4 checks.</span><span class="w">Where: pick the location in the <i>Locations</i> list on the left (on a phone, tap <i>Locations</i> at the top), then press <i>Check now</i> on its card.</span></span></li>
+      <li><span><b>Run a Managed month in parts.</b><span class="d">A whole Managed month is about 4,000 checks, so do the first 1,000, then the last 1,000 another day.</span><span class="w">Where: <i>Run options</i>, next to <i>Run now</i> at the top of Insights → choose <i>The first</i> or <i>The last</i>, type 1000, press <i>Done</i>, then press the Run button.</span></span></li>
+      <li><span><b>Legacy months can run in full.</b><span class="d">They're about 220 checks each.</span><span class="w">Where: open the month menu in the top bar; Legacy months have a <i>Legacy</i> chip. The filter icon on its left shows Legacy months only.</span></span></li>
+      <li><span><b>Look at "Last check" before pressing Run now.</b><span class="d">Don't re-run reviews checked in the last 7 days.</span><span class="w">Where: the line under the <i>Insights</i> heading, e.g. "Last check: Today, 9:01 PM".</span></span></li>
+      <li><span><b>One person runs the month checks.</b><span class="d">Everyone else uses Check now on single locations.</span></span></li>
+    </ol>
+    <p class="ok">"Could not be checked" isn't lost. Those reviews are tried again on the next run of that month.</p>
+  </div>
+  <div class="ft">
+    <label><input type="checkbox" id="howtoHide">Don't show this again</label>
+    <span class="ft-r"><a class="guide" href="#help" id="howtoGuide">Full user guide</a><button class="btn" id="howtoClose" type="button">Got it</button></span>
+  </div>
+</dialog>
 <div class="shell">
   <header class="topbar">
     <div class="brand"><span class="logo"><img src="logo.png" alt=""></span><span>Google Review Monitor</span></div>
@@ -437,6 +562,7 @@ export const dashboardHtml = `<!doctype html>
       <div class="mb-pop mb-menu" id="filterMenu" role="menu" aria-label="Show months" hidden></div>
       <div class="mb-pop mb-list" id="monthList" role="listbox" aria-label="Month" hidden></div>
     </div>
+    <button class="themebtn helpbtn" id="howtoOpen" type="button" aria-label="How to use the monitor for now" title="How to use the monitor for now">?</button>
     <button class="themebtn" id="themeToggle" type="button" aria-label="Switch to dark theme" title="Switch to dark theme">
       <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
       <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
@@ -449,6 +575,7 @@ export const dashboardHtml = `<!doctype html>
     <a href="#removedSection"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9 2.4 17.5A2 2 0 0 0 4.1 20.5h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Removed</a>
     <a href="#activitySection"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Activity</a>
     <a href="#audit" data-view="audit"><svg viewBox="0 0 24 24"><path d="M8 4h9a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM9 9h6M9 13h6M9 17h3"/></svg>Audit</a>
+    <a href="#help" data-view="help"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6M12 17h.01"/></svg>Help</a>
     <a href="#configure" data-view="configure"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>Configure</a>
   </nav>
   <div class="panel" id="panel">
@@ -558,6 +685,144 @@ export const dashboardHtml = `<!doctype html>
       </div>
     </main>
 
+    <main class="main guide-pg" id="viewHelp" hidden>
+      <div class="pagehead">
+        <div>
+          <h1>User guide</h1>
+          <div class="schedule">How to check reviews, read the results and who gets the removal alerts.</div>
+        </div>
+        <div class="runactions"><button class="btn ghost" id="helpTips" type="button">Show the quick tips</button></div>
+      </div>
+      <div class="guide">
+        <nav class="toc" aria-label="Guide sections">
+          <button type="button" data-to="g-start">Getting started</button>
+          <button type="button" data-to="g-limits">The free-plan limit</button>
+          <button type="button" data-to="g-check">Checking reviews</button>
+          <button type="button" data-to="g-results">Reading the results</button>
+          <button type="button" data-to="g-alerts">Removal alerts</button>
+          <button type="button" data-to="g-asana">Working in Asana</button>
+          <button type="button" data-to="g-pages">Audit and Configure</button>
+          <button type="button" data-to="g-phone">On a phone</button>
+          <button type="button" data-to="g-faq">Questions</button>
+        </nav>
+        <div class="gbody">
+          <section class="card" id="g-start">
+            <h2>Getting started</h2>
+            <p>The monitor reads every disputed review from Asana and checks on Google whether it is still there. When one is gone, the right people get a Slack message.</p>
+            <h3>Find your way around</h3>
+            <ul>
+              <li><b>Pick a month</b> in the bar at the top. Months are listed newest first. Legacy months have a <span class="chip legacy">Legacy</span> chip, and the filter icon on the left of the bar shows Managed or Legacy months only.</li>
+              <li><b>Pick a location</b> in the <i class="ui">Locations</i> list on the left. Type in the search box to find one quickly.</li>
+              <li><b>Use the menu</b> on the far left: <i class="ui">Insights</i> is the main page, <i class="ui">Removed</i> and <i class="ui">Activity</i> jump to those sections of it, then <i class="ui">Audit</i>, <i class="ui">Help</i> and <i class="ui">Configure</i>.</li>
+              <li>The moon button in the top bar switches to dark mode. The <i class="ui">?</i> button opens the quick tips.</li>
+            </ul>
+            <p class="gnote">Nothing runs on a timer. Reviews are only checked when someone presses <i class="ui">Check now</i> or <i class="ui">Run now</i>.</p>
+          </section>
+
+          <section class="card" id="g-limits">
+            <h2>The free-plan limit</h2>
+            <p>Reviews are checked by our scraper on Vercel's free plan, which allows only a limited number of checks a month. Each review checked is one check. Until the scraper moves to ngrok:</p>
+            <ul>
+              <li><b>Check one location at a time</b> with <i class="ui">Check now</i>. That's about 4 checks.</li>
+              <li><b>Run a Managed month in parts</b>: about 4,000 checks for the whole month, so use <i class="ui">Run options</i> to do 1,000 at a time.</li>
+              <li><b>Legacy months can run in full</b>: about 220 checks each.</li>
+              <li><b>Look at "Last check"</b> under the Insights heading before pressing Run now. Don't re-run reviews checked in the last 7 days.</li>
+              <li><b>One person runs the month checks.</b> Everyone else uses Check now on single locations.</li>
+            </ul>
+          </section>
+
+          <section class="card" id="g-check">
+            <h2>Checking reviews</h2>
+            <h3>One location: Check now</h3>
+            <ol>
+              <li>Pick the month in the top bar.</li>
+              <li>Pick the location in the <i class="ui">Locations</i> list.</li>
+              <li>Press <i class="ui">Check now</i> on the location's card. The result shows under it in a minute or so.</li>
+            </ol>
+            <h3>Part of a month: Run options</h3>
+            <ol>
+              <li>Press <i class="ui">Run options</i>, next to <i class="ui">Run now</i> at the top of Insights.</li>
+              <li>Choose <i class="ui">The first</i> or <i class="ui">The last</i> and type how many reviews, e.g. 1000. They're counted in the order of the Locations list, and a location is never split.</li>
+              <li>Press <i class="ui">Done</i>, then the Run button, which now says e.g. <i class="ui">Run first 1,000</i>.</li>
+            </ol>
+            <p>Your choice is remembered in your browser. <i class="ui">Back to defaults</i> in Run options returns to all reviews.</p>
+            <h3>A whole month: Run now</h3>
+            <p>With <i class="ui">All of this month's reviews</i> chosen in Run options, <i class="ui">Run now</i> checks every review in the month. A bar shows which location is being checked and how far along it is. <i class="ui">Cancel</i> stops it after the current review; anything already found removed is still alerted.</p>
+            <h3>Sync from Asana</h3>
+            <p><i class="ui">Sync from Asana</i> brings in new and changed dispute tasks for the month without checking Google. Use it after the team adds disputes in Asana. Run now also syncs first, unless the month was synced recently (how recently is set on Configure). Tick <i class="ui">Sync from Asana first anyway</i> in Run options to always sync.</p>
+          </section>
+
+          <section class="card" id="g-results">
+            <h2>Reading the results</h2>
+            <h3>The stats card</h3>
+            <ul>
+              <li><b>Reviews monitored</b>: disputes in the chosen month, split into <i class="ui">Still available</i>, <i class="ui">Removed</i>, <i class="ui">Could not be checked</i>, and <i class="ui">Removed in Asana</i> (tagged "Successfully removed" by the team).</li>
+              <li><b>Disputes synced from Asana</b>: the total across every synced month, with rings showing how many months are synced (all, Managed, Legacy).</li>
+            </ul>
+            <h3>What each status means</h3>
+            <dl>
+              <dt><span class="tag sent">Still available</span></dt><dd>The review is still on Google.</dd>
+              <dt><span class="tag failed">Removed</span></dt><dd>Google no longer shows it. Every removal is checked twice before it counts.</dd>
+              <dt><span class="tag pending">Could not be checked</span></dt><dd>The scraper didn't get an answer from Google this time. It's tried again on the next run.</dd>
+            </dl>
+            <h3>Review status: the removed list</h3>
+            <ul>
+              <li><b>Worked on by</b>: show one person's removed reviews, or those not assigned in Asana. People with nothing removed yet are listed at the bottom with a 0.</li>
+              <li><b>Newest · Reviewer A–Z · Location A–Z</b>: change the order.</li>
+              <li>Long lists are split into pages of 10. Use <i class="ui">Prev</i>, the page numbers and <i class="ui">Next</i> under the list.</li>
+              <li>Each removed review shows whether its alert was sent: <span class="tag pending">Pending</span>, <span class="tag sent">Notified</span>, <span class="tag failed">Failed, will retry</span> or <span class="tag sent">Already tagged in Asana</span>.</li>
+            </ul>
+          </section>
+
+          <section class="card" id="g-alerts">
+            <h2>Removal alerts</h2>
+            <p>When a check finds reviews removed, a Slack message is sent with each review's location, reviewer, who worked on it, the Asana task and the Google link.</p>
+            <ul>
+              <li><b>Vanessa</b> gets every removal. Reviews nobody is assigned to come last, under <i class="ui">Not assigned in Asana</i>.</li>
+              <li><b>Jessica, Papy and Manasse</b> each get a message with only the removals they worked on.</li>
+              <li>A review is alerted <b>once</b>. Reviews already tagged "Successfully removed" in Asana are never alerted.</li>
+              <li>If Slack fails, the alert is tried again on the next run. Who got what is on the <i class="ui">Audit</i> page.</li>
+            </ul>
+          </section>
+
+          <section class="card" id="g-asana">
+            <h2>Working in Asana</h2>
+            <ul>
+              <li><b>Assign every dispute</b> (or its location task) to the person working on it. That's the "Worked on by" name, and it decides who gets the alert.</li>
+              <li><b>Tag confirmed removals "Successfully removed".</b> They then count as Removed in Asana and are never alerted.</li>
+              <li>After changing tasks in Asana, press <i class="ui">Sync from Asana</i> so the monitor sees the change.</li>
+            </ul>
+          </section>
+
+          <section class="card" id="g-pages">
+            <h2>Audit and Configure</h2>
+            <p><b>Audit</b> lists who did what and when: checks started, finished or cancelled, single-location checks, settings changes and who was sent an alert. Filter it with <i class="ui">All · Checks · Settings · System</i>.</p>
+            <p><b>Configure</b> holds the settings: the review source (Scrape mode), how many Google reviews to look through per location, and how long an Asana sync counts as fresh. Changes apply from the next check. Please leave these to the person who looks after the monitor.</p>
+          </section>
+
+          <section class="card" id="g-phone">
+            <h2>On a phone</h2>
+            <ul>
+              <li>The month bar sits on its own row at the top, and the menu becomes a row of tabs under it.</li>
+              <li>The Locations list is folded away: tap <i class="ui">Locations</i> to open it. Picking a location closes it and jumps to that location's reviews.</li>
+              <li><i class="ui">Run options</i> opens from the bottom of the screen.</li>
+            </ul>
+          </section>
+
+          <section class="card" id="g-faq">
+            <h2>Questions</h2>
+            <dl class="faq">
+              <dt>I can't find a month.</dt><dd>Check the filter icon in the month bar: it may be set to Managed or Legacy only. A month that says <i class="ui">Not synced</i> needs <i class="ui">Sync from Asana</i> first.</dd>
+              <dt>Lots of reviews say "Could not be checked".</dt><dd>The scraper may be starting up, blocked by Google for a moment, or out of free-plan checks for the month. They're retried on the next run; nothing is lost.</dd>
+              <dt>Someone's name isn't in the Worked on by filter.</dt><dd>They have no removed reviews this month yet, so they're listed at the bottom under <i class="ui">No removals yet</i>.</dd>
+              <dt>A review shows the wrong person.</dt><dd>Fix the assignee in Asana, then press <i class="ui">Sync from Asana</i>.</dd>
+              <dt>Someone didn't get their Slack alert.</dt><dd>Look on the <i class="ui">Audit</i> page for "Sent … their removal alert" or "Could not send …", and tell the person who looks after the monitor.</dd>
+            </dl>
+          </section>
+        </div>
+      </div>
+    </main>
+
     <main class="main" id="viewConfig" hidden>
       <div class="pagehead">
         <div>
@@ -585,14 +850,8 @@ export const dashboardHtml = `<!doctype html>
           <div class="field"><label for="cfgMax">Google reviews to look through per location</label><input id="cfgMax" type="number" min="0" max="20000" step="50" inputmode="numeric">
             <div class="hint">The same setting as in Run options on the Insights page. 0 means as many as the service allows.</div></div>
           <div class="field"><label for="cfgSyncFresh">Skip the Asana sync if the month was synced in the last (minutes)</label><input id="cfgSyncFresh" type="number" min="0" max="10080" step="5" inputmode="numeric">
-            <div class="hint">Applies to Run now. 0 means always sync from Asana first. The daily check and the Sync from Asana button always sync.</div></div>
+            <div class="hint">Applies to Run now. 0 means always sync from Asana first. The Sync from Asana button always syncs.</div></div>
           <div class="field"><label class="switch"><input id="cfgDfsFast" type="checkbox"><span><span class="t">Use DataForSEO's fast queue for full runs</span><span class="d">About a minute per request at double the price. Single-location checks always use it.</span></span></label></div>
-        </div>
-
-        <div class="card">
-          <h2>Automatic daily check</h2>
-          <p class="lead" id="cfgSchedule"></p>
-          <div class="field"><label class="switch"><input id="cfgDaily" type="checkbox"><span><span class="t">Run the daily check automatically</span><span class="d">When off, reviews are only checked when someone presses Run now or Check now.</span></span></label></div>
         </div>
 
         <div class="card">
@@ -645,6 +904,25 @@ function applyTheme(dark){
   b.setAttribute('aria-label',label);b.title=label;
 }
 applyTheme(document.documentElement.dataset.theme==='dark');
+// "How to use it for now": opens on arrival until "Don't show this again" is ticked; the ? button reopens it.
+// Bump the key when the text changes, so everyone sees the new version once.
+const HOWTO_KEY='grm.howto.v1';
+function openHowto(){const d=$('howto');if(d.open)return;try{$('howtoHide').checked=localStorage.getItem(HOWTO_KEY)==='hide'}catch(e){}d.showModal();$('howtoClose').focus()}
+$('howto').addEventListener('close',()=>{try{if($('howtoHide').checked)localStorage.setItem(HOWTO_KEY,'hide');else localStorage.removeItem(HOWTO_KEY)}catch(e){}});
+$('howtoClose').onclick=()=>$('howto').close();
+$('howtoGuide').onclick=()=>$('howto').close();
+$('helpTips').onclick=openHowto;
+// Guide contents: jump to a section, and mark the one being read. Buttons, not #links, because the hash picks the page.
+for(const b of document.querySelectorAll('.toc button'))b.onclick=()=>{const t=$(b.dataset.to);if(t)t.scrollIntoView({behavior:reduceMotionNow()?'auto':'smooth',block:'start'})};
+function reduceMotionNow(){return matchMedia('(prefers-reduced-motion:reduce)').matches}
+if('IntersectionObserver' in window){
+  const seen=new IntersectionObserver(es=>{for(const e of es)if(e.isIntersecting)for(const b of document.querySelectorAll('.toc button'))b.classList.toggle('on',b.dataset.to===e.target.id)},{rootMargin:'0px 0px -70% 0px'});
+  for(const s of document.querySelectorAll('.gbody section'))seen.observe(s);
+}
+$('howto').addEventListener('click',e=>{if(e.target===$('howto'))$('howto').close()});
+$('howtoOpen').onclick=openHowto;
+{let hidden=false;try{hidden=localStorage.getItem(HOWTO_KEY)==='hide'}catch(e){}if(!hidden)openHowto()}
+
 $('themeToggle').onclick=()=>{
   const dark=document.documentElement.dataset.theme!=='dark';
   applyTheme(dark);
@@ -1055,15 +1333,14 @@ async function loadSummary(){
   }
   st.append(rows);
 
-  $('schedule').textContent='Last check: '+(s.lastCheckAt?dayLabel(s.lastCheckAt)+', '+timeLabel(s.lastCheckAt):'never')
-    +'   ·   Next check: '+(s.nextCheckAt?dayLabel(s.nextCheckAt)+', '+timeLabel(s.nextCheckAt):'not scheduled');
+  $('schedule').textContent='Last check: '+(s.lastCheckAt?dayLabel(s.lastCheckAt)+', '+timeLabel(s.lastCheckAt):'never');
 
   const fail=$('failBanner');
   if(s.notificationsFailing){fail.textContent=s.notificationsFailing+' removal notification(s) could not be emailed. They will be retried at the next run.';fail.classList.add('show')}
   else fail.classList.remove('show');
 
   const unk=$('unknownBanner');
-  if(s.unknown){unk.textContent='⚠ '+s.unknown+' review(s) could not be checked. They will be retried automatically.';unk.classList.add('show')}
+  if(s.unknown){unk.textContent='⚠ '+s.unknown+' review(s) could not be checked. They will be tried again the next time this month is run.';unk.classList.add('show')}
   else unk.classList.remove('show');
 
   return s;
@@ -1077,9 +1354,94 @@ function notifTag(r){
   return ['Notified '+dayLabel(r.notification_sent_at),'sent'];
 }
 
+// ---- Review status: the month's removed reviews, filtered by who worked on them, sorted and paged ----
+const PAGE_SIZE=10, NOBODY='__nobody__';
+const SORTS={newest:'Newest',reviewer:'Reviewer A–Z',location:'Location A–Z'};
+let removedRows=[], removedWorkers=[], removedKey='', removedWho='all', removedSort='newest', removedPage=1;
+try{removedWho=localStorage.getItem('grm.removedWho')||'all';removedSort=localStorage.getItem('grm.removedSort')||'newest'}catch(e){}
+const byText=(a,b)=>(a||'\\uffff').localeCompare(b||'\\uffff',undefined,{sensitivity:'base'});
+const CHEV='<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+const PEOPLE_SVG='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.2a3 3 0 0 1 0 5.6M18 19a5 5 0 0 0-2.5-4.3"/></svg>';
+const NOBODY_SVG='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></svg>';
+
+/** Initials for a person's circle: "Jessica Kabemba" -> "JK"; an email shows its first two letters. */
+function initials(name){
+  const parts=name.split('@')[0].split(/[\\s._-]+/).filter(Boolean);
+  return ((parts[0]||'?')[0]+(parts.length>1?parts[parts.length-1][0]:(parts[0]||'')[1]||'')).toUpperCase();
+}
+function avatar(kind,name){
+  const a=el('span',null,'av'+(kind==='person'?'':' '+kind));a.setAttribute('aria-hidden','true');
+  if(kind==='person')a.textContent=initials(name);else a.innerHTML=kind==='all'?PEOPLE_SVG:NOBODY_SVG;
+  return a;
+}
+/** "A", "A and B", "A, B and C", "A, B, C and 4 others". */
+function nameList(names){
+  if(names.length<=3)return names.length<2?names.join(''):names.slice(0,-1).join(', ')+' and '+names[names.length-1];
+  return names.slice(0,3).join(', ')+' and '+(names.length-3)+' other'+(names.length-3===1?'':'s');
+}
+
+/** The Worked on by pill and its menu. items: {value, label, count, kind, zero}. */
+function whoPicker(items,value,onPick){
+  const wrap=el('div',null,'rwho'), b=el('button',null,'rwho-btn'), pop=el('div',null,'mb-pop');
+  const cur=items.find(i=>i.value===value)||items[0];
+  b.type='button';b.setAttribute('aria-haspopup','menu');b.setAttribute('aria-expanded','false');
+  b.append(avatar(cur.kind,cur.label),el('span','Worked on by','lbl'),el('span',cur.label,'val'));
+  b.insertAdjacentHTML('beforeend',CHEV);
+  pop.setAttribute('role','menu');pop.hidden=true;
+  const open=on=>{pop.hidden=!on;b.setAttribute('aria-expanded',String(on));if(on){const f=pop.querySelector('[aria-checked="true"]')||pop.querySelector('.mb-item:not(:disabled)');if(f)f.focus()}};
+  let zeroHead=false;
+  pop.append(el('div','Worked on by','mb-head'));
+  for(const i of items){
+    if(i.zero&&!zeroHead){pop.append(el('div','No removals yet','mb-head'));zeroHead=true}
+    const it=el('button',null,'mb-item'+(i.zero?' zero':''));it.type='button';it.setAttribute('role','menuitemradio');
+    it.setAttribute('aria-checked',String(i.value===cur.value));it.disabled=!!i.zero;
+    it.append(avatar(i.kind,i.label),el('span',i.label,'name'),el('span',String(i.count),'n'));
+    it.insertAdjacentHTML('beforeend',CHECK_SVG);
+    it.onclick=()=>{open(false);b.focus();if(i.value!==cur.value)onPick(i.value)};
+    pop.append(it);
+  }
+  b.onclick=()=>open(pop.hidden);
+  wrap.addEventListener('keydown',e=>{
+    if(e.key==='Escape'&&!pop.hidden){e.preventDefault();open(false);b.focus();return}
+    if(pop.hidden||!['ArrowDown','ArrowUp','Home','End'].includes(e.key))return;
+    e.preventDefault();
+    const list=[...pop.querySelectorAll('.mb-item:not(:disabled)')], k=list.indexOf(document.activeElement);
+    const next=e.key==='Home'?0:e.key==='End'?list.length-1:Math.max(0,Math.min(list.length-1,k+(e.key==='ArrowDown'?1:-1)));
+    if(list[next])list[next].focus();
+  });
+  wrap.append(b,pop);return wrap;
+}
+// One listener for every redraw of the picker: a click anywhere else closes its menu.
+document.addEventListener('pointerdown',e=>{
+  for(const w of document.querySelectorAll('.rwho'))if(!w.contains(e.target)){const p=w.querySelector('.mb-pop');if(p&&!p.hidden){p.hidden=true;w.querySelector('.rwho-btn').setAttribute('aria-expanded','false')}}
+});
+/** Newest | Reviewer A–Z | Location A–Z */
+function sortToggle(value,onPick){
+  const g=el('div',null,'rseg');g.setAttribute('role','group');g.setAttribute('aria-label','Sort removed reviews');
+  for(const [k,label] of Object.entries(SORTS)){
+    const b=el('button',label);b.type='button';b.setAttribute('aria-pressed',String(k===value));
+    b.onclick=()=>{if(k!==value)onPick(k)};g.append(b);
+  }
+  return g;
+}
+/** Page numbers to show: the first, the last, and the current one with its neighbours; null marks a gap. */
+function pageList(cur,total){
+  const keep=new Set([1,total,cur-1,cur,cur+1].filter(p=>p>=1&&p<=total)), out=[];
+  // A gap of a single page shows that page instead of "…".
+  for(let p=1;p<=total;p++){if(keep.has(p)||keep.has(p-1)&&keep.has(p+1))out.push(p);else if(out[out.length-1]!==null)out.push(null)}
+  return out;
+}
+
 async function loadStatus(){
-  const rows=await api(withProject('api/removed'));
-  const box=$('status');box.replaceChildren();
+  const [rows,workers]=await Promise.all([api(withProject('api/removed')),api(withProject('api/workers')).catch(()=>[])]);
+  // The 60-second refresh redraws only when something changed, so the page and an open menu stay put.
+  const key=JSON.stringify([rows.map(r=>[r.id,r.notification_sent,r.last_notification_error,r.asana_tagged_removed]),workers]);
+  if(key===removedKey&&$('status').firstChild)return;
+  removedKey=key;removedRows=rows;removedWorkers=workers;renderRemoved();
+}
+
+function renderRemoved(){
+  const rows=removedRows, box=$('status');box.replaceChildren();
   if(!rows.length){
     const c=el('div',null,'card ok');
     c.append(el('p','🟢 No new reviews have been removed.','headline'),el('p','Everything is working normally.','subline'));
@@ -1088,8 +1450,44 @@ async function loadStatus(){
   const c=el('div',null,'card attn');
   c.append(el('p','🔴 '+rows.length+' review'+(rows.length>1?'s':'')+' removed','headline'),
     el('p','These reviews were detected as removed during the most recent check.','subline'));
+
+  // Everyone who appears in this month's removed reviews, most removals first.
+  const people=new Map();let nobody=0;
+  for(const r of rows){const w=workedOnBy(r);if(w)people.set(w,(people.get(w)||0)+1);else nobody++}
+  if(removedWho!=='all'&&!(removedWho===NOBODY?nobody:people.has(removedWho)))removedWho='all';
+  // People with disputes this month but nothing removed yet: listed last in the menu, and in a friendly note.
+  const notYet=removedWorkers.map(w=>w.name).filter(n=>!people.has(n)).sort(byText);
+  const whoItems=[{value:'all',label:'Everyone',count:rows.length,kind:'all'},
+    ...[...people].sort((a,b)=>b[1]-a[1]||byText(a[0],b[0])).map(([n,k])=>({value:n,label:n,count:k,kind:'person'}))];
+  if(nobody)whoItems.push({value:NOBODY,label:'Not assigned in Asana',count:nobody,kind:'none'});
+  for(const n of notYet)whoItems.push({value:'zero:'+n,label:n,count:0,kind:'person',zero:true});
+  if(!SORTS[removedSort])removedSort='newest';
+
+  const shown=rows.filter(r=>removedWho==='all'||(removedWho===NOBODY?!workedOnBy(r):workedOnBy(r)===removedWho));
+  if(removedSort==='reviewer')shown.sort((a,b)=>byText(a.reviewer_name,b.reviewer_name));
+  else if(removedSort==='location')shown.sort((a,b)=>byText(a.location,b.location)||byText(a.reviewer_name,b.reviewer_name));
+  const pages=Math.max(1,Math.ceil(shown.length/PAGE_SIZE));
+  removedPage=Math.min(Math.max(1,removedPage),pages);
+  const from=(removedPage-1)*PAGE_SIZE, page=shown.slice(from,from+PAGE_SIZE);
+
+  const remember=()=>{try{localStorage.setItem('grm.removedWho',removedWho);localStorage.setItem('grm.removedSort',removedSort)}catch(e){}};
+  const tools=el('div',null,'rtools');
+  tools.append(
+    whoPicker(whoItems,removedWho,v=>{removedWho=v;removedPage=1;remember();renderRemoved();const b=$('status').querySelector('.rwho-btn');if(b)b.focus()}),
+    sortToggle(removedSort,v=>{removedSort=v;removedPage=1;remember();renderRemoved();const b=$('status').querySelector('.rseg [aria-pressed="true"]');if(b)b.focus()}),
+    el('span',shown.length===rows.length&&pages===1?shown.length+' shown':(shown.length?(from+1)+'–'+(from+page.length)+' of '+shown.length:'0 of '+rows.length),'shown'));
+  c.append(tools);
+  if(removedWho==='all'&&notYet.length){
+    const note=el('div',null,'rnote');
+    const t=el('div');
+    t.append(document.createTextNode('No removals yet for '),el('b',nameList(notYet)),document.createTextNode('.'),
+      el('div','Their disputes are still being worked on, and they’ll show up here as soon as Google takes one down. Keep going!','sub'));
+    note.append(el('span','🌱','ic'),t);
+    c.append(note);
+  }
+
   const list=el('ul',null,'removed-list');
-  for(const r of rows){
+  for(const r of page){
     const li=document.createElement('li');
     const left=el('div',null,'left');left.append(el('span',r.reviewer_name||'Unknown reviewer','who'),el('span',(r.location||'Unknown location')+'  ·  '+(workedOnBy(r)?'Worked on by '+workedOnBy(r):'Nobody assigned in Asana'),'where'));
     const [tagText,tagCls]=notifTag(r);
@@ -1099,7 +1497,24 @@ async function loadStatus(){
     li.append(left,right);
     list.append(li);
   }
-  c.append(list);box.append(c);
+  c.append(list);
+
+  // ‹ Prev 1 2 … 9 Next ›, only when there is more than one page.
+  if(pages>1){
+    const nav=el('nav',null,'pager');nav.setAttribute('aria-label','Removed reviews pages');
+    const go=p=>{removedPage=p;renderRemoved();const t=$('status').querySelector('.rtools');if(t)t.scrollIntoView({block:'nearest'});const cur=$('status').querySelector('.pager [aria-current]');if(cur)cur.focus()};
+    const btn=(html,label,p,disabled)=>{const b=document.createElement('button');b.type='button';b.innerHTML=html;b.setAttribute('aria-label',label);b.disabled=disabled;b.onclick=()=>go(p);return b};
+    nav.append(btn('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Prev','Previous page',removedPage-1,removedPage===1));
+    for(const p of pageList(removedPage,pages)){
+      if(p===null){nav.append(el('span','…','gap'));continue}
+      const b=btn(String(p),'Page '+p,p,false);
+      if(p===removedPage)b.setAttribute('aria-current','page');
+      nav.append(b);
+    }
+    nav.append(btn('Next<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>','Next page',removedPage+1,removedPage===pages));
+    c.append(nav);
+  }
+  box.append(c);
 }
 
 const NO_LOCATION='__none__';
@@ -1364,16 +1779,9 @@ const cfgRead=()=>({
   reviewsPerLocation:$('cfgMax').value===''?NaN:Number($('cfgMax').value),
   syncFreshMinutes:$('cfgSyncFresh').value===''?NaN:Number($('cfgSyncFresh').value),
   dataforseoPriority:$('cfgDfsFast').checked,
-  dailyCheckEnabled:$('cfgDaily').checked,
 });
 const cfgDirty=()=>{if(!cfg)return false;const now=cfgRead();return Object.keys(now).some(k=>now[k]!==cfg.settings[k]&&!(Number.isNaN(now[k])&&Number.isNaN(cfg.settings[k])))};
 function cfgMessage(text,kind){const m=$('cfgMsg');m.textContent=text||'';m.className='banner'+(text?' show '+(kind||'note'):'')}
-function scheduleText(c){
-  const m=/^(\\d{1,2}) (\\d{1,2}) \\* \\* \\*$/.exec(c.schedule.cron);
-  const when=m?'Every day at '+m[2].padStart(2,'0')+':'+m[1].padStart(2,'0'):'Schedule: '+c.schedule.cron;
-  const next=c.schedule.nextCheckAt?' Next: '+dayLabel(c.schedule.nextCheckAt)+', '+timeLabel(c.schedule.nextCheckAt)+' your time.':' Currently turned off.';
-  return when+' ('+c.schedule.timezone+' time).'+next;
-}
 function cfgFill(c){
   cfg=c;
   const fill=(sel,none)=>{
@@ -1388,8 +1796,6 @@ function cfgFill(c){
   $('cfgSyncFresh').value=c.settings.syncFreshMinutes;syncFresh=c.settings.syncFreshMinutes;
   sharedDepth=takesDepth(c)?c.settings.reviewsPerLocation:null;renderRunOptions();
   $('cfgDfsFast').checked=c.settings.dataforseoPriority;
-  $('cfgDaily').checked=c.settings.dailyCheckEnabled;
-  $('cfgSchedule').textContent=scheduleText(c);
   $('cfgReset').hidden=!c.overridden;
   const box=$('cfgConnections');box.replaceChildren();
   for(const x of c.connections){const r=el('div',null,'r'+(x.ok?'':' bad'));r.append(el('span',x.label,'k'),el('span',x.detail,'v'));box.append(r)}
@@ -1411,7 +1817,7 @@ async function loadConfig(){
   cfgFill(c);
   loadAccounts();
 }
-for(const id of ['cfgSource','cfgFallback','cfgMax','cfgSyncFresh','cfgDfsFast','cfgDaily'])$(id).addEventListener('input',()=>{$('cfgSave').disabled=!cfgDirty();cfgMessage('')});
+for(const id of ['cfgSource','cfgFallback','cfgMax','cfgSyncFresh','cfgDfsFast'])$(id).addEventListener('input',()=>{$('cfgSave').disabled=!cfgDirty();cfgMessage('')});
 async function cfgSend(path,method,body){
   const r=await fetch(path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
   if(!r.ok)throw new Error(r.status);
@@ -1440,10 +1846,12 @@ $('cfgReset').onclick=async()=>{
 let currentView='insights';
 function route(){
   const h=location.hash.slice(1);
-  const view=h==='audit'||h==='configure'?h:'insights';
+  const view=h==='audit'||h==='configure'||h==='help'?h:'insights';
   $('viewInsights').hidden=view!=='insights';
   $('viewAudit').hidden=view!=='audit';
   $('viewConfig').hidden=view!=='configure';
+  $('viewHelp').hidden=view!=='help';
+  if(view==='help'&&view!==currentView)$('viewHelp').scrollTop=0;
   $('panel').classList.toggle('full',view!=='insights');
   for(const a of document.querySelectorAll('.rail a'))a.classList.toggle('active',a.dataset.view===view||(!a.dataset.view&&a.getAttribute('href')==='#'+h&&view==='insights'));
   if(view==='insights'&&!document.querySelector('.rail a.active'))document.querySelector('.rail a[data-view=insights]').classList.add('active');

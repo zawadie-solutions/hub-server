@@ -35,10 +35,12 @@ export interface DiscoveredReview {
   asanaProjectGid: string;
   location: string | null;
   month: string | null;
-  /** Who the dispute task itself is assigned to in Asana. */
+  /** Who the dispute task itself is assigned to in Asana, and their Asana email. */
   assigneeName: string | null;
-  /** Who the location's task is assigned to in Asana. */
+  assigneeEmail: string | null;
+  /** Who the location's task is assigned to in Asana, and their Asana email. */
   locationAssigneeName: string | null;
+  locationAssigneeEmail: string | null;
   reviewerName: string | null;
   rating: number | null;
   reviewText: string | null;
@@ -75,6 +77,9 @@ export interface ReviewRow {
   assignee_name: string | null;
   /** Who the location's task is assigned to in Asana (null if nobody). */
   location_assignee_name: string | null;
+  /** Their Asana emails, used to find them in Slack when the name does not match. */
+  assignee_email: string | null;
+  location_assignee_email: string | null;
   /** Tagged "Successfully removed" in Asana as of the last sync. */
   asana_tagged_removed: boolean;
 }
@@ -82,6 +87,35 @@ export interface ReviewRow {
 /** The person working on a dispute: its own assignee, else whoever has the location. */
 export const workedOnBy = (r: Pick<ReviewRow, "assignee_name" | "location_assignee_name">): string | null => r.assignee_name || r.location_assignee_name || null;
 
+/** The same person as workedOnBy, with their Asana email when Asana gives one. */
+export function workedOnByPerson(
+  r: Pick<ReviewRow, "assignee_name" | "location_assignee_name" | "assignee_email" | "location_assignee_email">,
+): { name: string | null; email: string | null } | null {
+  if (r.assignee_name || r.assignee_email) return { name: r.assignee_name, email: r.assignee_email ?? null };
+  if (r.location_assignee_name || r.location_assignee_email) return { name: r.location_assignee_name, email: r.location_assignee_email ?? null };
+  return null;
+}
+
+/** What happened when one agent was sent their own removal alert. */
+export interface AgentNotice {
+  userId: string;
+  name: string;
+  reviews: number;
+  error?: string;
+}
+
+export interface RemovalMessage {
+  subject: string;
+  text: string;
+  html: string;
+}
+
 export interface Notifier {
-  send(message: { subject: string; text: string; html: string }): Promise<void>;
+  /** Sends every removal to the leads. Throws when it did not reach them, so it is retried. */
+  send(message: RemovalMessage): Promise<void>;
+  /**
+   * Also tells each agent about only the removals they worked on. Optional (email has no
+   * per-person routing). Never throws: each agent's outcome is reported instead.
+   */
+  notifyAgents?(rows: ReviewRow[], build: (rows: ReviewRow[]) => RemovalMessage): Promise<AgentNotice[]>;
 }

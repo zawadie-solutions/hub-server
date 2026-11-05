@@ -9,7 +9,6 @@ import { logger } from "../logger";
 import { applyStored, describeChanges, parseSettings, settings, SOURCE_LABELS, SOURCES } from "../settings";
 import { buildChecker, buildNotifier, sourceConfigured } from "../wiring";
 import { type ConfigStore, createApp, type MonthRunnerOpts } from "./app";
-import { nextScheduledRun } from "./schedule";
 
 /** Asana is needed for the month picker / "Run now" button; Google/Slack creds are optional
  *  and only checked when a run actually happens (see MonthRunnerOpts in app.ts). */
@@ -59,11 +58,6 @@ function buildConfigStore(repo: ReviewRepo): ConfigStore {
     /** True when something was saved from the dashboard, so .env is being overridden. */
     overridden: Object.keys(await repo.getSettings()).length > 0,
     sources: SOURCES.map((id) => ({ id, label: SOURCE_LABELS[id], configured: sourceConfigured(id) })),
-    schedule: {
-      cron: config.scheduleCron,
-      timezone: config.timezone,
-      nextCheckAt: settings.dailyCheckEnabled ? (nextScheduledRun(config.scheduleCron, config.timezone)?.toISOString() ?? null) : null,
-    },
     connections: [
       { label: "Asana", ok: has(config.asana), detail: has(config.asana) ? "Connected" : "ASANA_TOKEN / ASANA_PROJECT_GID not set in .env" },
       config.slackEnabled
@@ -74,7 +68,6 @@ function buildConfigStore(repo: ReviewRepo): ConfigStore {
 
   return {
     view,
-    dailyCheckEnabled: () => settings.dailyCheckEnabled,
     accounts: () => Promise.all([dataForSeoAccount(), apifyAccount()]),
     async update(input, actor) {
       const patch = parseSettings(input);
@@ -113,8 +106,6 @@ export async function buildDashboard(repo: ReviewRepo, hub?: Parameters<typeof c
     repo,
     user: config.dashboardUser,
     password: config.dashboardPassword,
-    scheduleCron: config.scheduleCron,
-    timezone: config.timezone,
     monthRunner: buildMonthRunner(),
     loadPlaceReviews,
     config: buildConfigStore(repo),

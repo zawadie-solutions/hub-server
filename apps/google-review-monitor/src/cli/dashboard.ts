@@ -1,4 +1,4 @@
-// Dashboard only (no scheduler). Useful when the daily job runs via Task Scheduler / `run-once`.
+// Dashboard only. Checks run from the dashboard, or with `run-once` from the command line.
 import { createDb, migrate } from "../db/db";
 import { ReviewRepo } from "../db/repo";
 import { startDashboard } from "../server/start";

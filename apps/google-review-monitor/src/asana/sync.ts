@@ -21,12 +21,17 @@ export interface WalkProgress {
   total: number;
 }
 
+export interface Assignee {
+  name: string | null;
+  email: string | null;
+}
+
 export interface WalkedTask {
   task: AsanaTask;
   /** Names from the root: [section, ancestor task, ..., this task] */
   path: string[];
   /** Who each entry of `path` is assigned to in Asana (null for the section and for unassigned tasks). */
-  assignees: (string | null)[];
+  assignees: (Assignee | null)[];
 }
 
 /** Runs `fn` over `items` with at most `limit` calls in flight at once. */
@@ -61,7 +66,10 @@ export async function walkProject(
   let total = 0;
   const report = () => opts.onProgress?.({ scanned: out.length, done, total });
 
-  const who = (t: AsanaTask) => t.assignee?.name?.trim() || null;
+  const who = (t: AsanaTask): Assignee | null => {
+    const name = t.assignee?.name?.trim() || null, email = t.assignee?.email?.trim() || null;
+    return name || email ? { name, email } : null;
+  };
   const expand = async (level: WalkedTask[], depth: number): Promise<void> => {
     for (const item of level) out.push(item);
     if (depth >= s.maxDepth) return report();
@@ -114,8 +122,10 @@ export function toDiscovered(w: WalkedTask, s: AsanaSettings): DiscoveredReview 
       path[s.locationIndex] && s.locationIndex < path.length - 1
         ? path[s.locationIndex]
         : (ancestors[ancestors.length - 1] ?? null),
-    assigneeName: assignees[assignees.length - 1] ?? null,
-    locationAssigneeName: (locationAt >= 0 ? assignees[locationAt] : null) ?? null,
+    assigneeName: assignees[assignees.length - 1]?.name ?? null,
+    assigneeEmail: assignees[assignees.length - 1]?.email ?? null,
+    locationAssigneeName: (locationAt >= 0 ? assignees[locationAt]?.name : null) ?? null,
+    locationAssigneeEmail: (locationAt >= 0 ? assignees[locationAt]?.email : null) ?? null,
     reviewerName: parseReviewerName(task.notes) ?? parseReviewerFromTitle(task.name) ?? (s.reviewerFromTitle ? task.name : null),
     rating: parseRating(task.notes),
     reviewText: parseReviewText(task.notes),

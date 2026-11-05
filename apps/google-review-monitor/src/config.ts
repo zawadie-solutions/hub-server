@@ -26,9 +26,6 @@ export const config = {
   port: int(env.PORT, 3000),
   dashboardUser: env.DASHBOARD_USER ?? "admin",
   dashboardPassword: env.DASHBOARD_PASSWORD ?? "",
-  /** Daily at 07:00 Central Africa Time (UTC+2, no DST). */
-  scheduleCron: env.SCHEDULE_CRON ?? "0 7 * * *",
-  timezone: "Africa/Maputo",
   removalRecheckDelayMs: int(env.REMOVAL_RECHECK_DELAY_MS, 60_000),
   checkDelayMs: int(env.CHECK_DELAY_MS, 500),
   keepCheckingRemoved: bool(env.KEEP_CHECKING_REMOVED, false),
@@ -81,7 +78,13 @@ export const config = {
   slackEnabled: Boolean(env.SLACK_BOT_TOKEN),
   slack: () => ({
     botToken: required("SLACK_BOT_TOKEN"),
+    /** The leads: they get every removal. */
     recipientUserIds: required("SLACK_RECIPIENT_USER_ID")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    /** Agents: each gets only the removals they worked on, matched by Asana name, then email. */
+    agentUserIds: (env.SLACK_AGENT_USER_IDS ?? "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
