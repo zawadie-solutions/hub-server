@@ -15,7 +15,7 @@ export interface AsanaTask {
   permalink_url?: string;
   num_subtasks?: number;
   /** The person the task is assigned to in Asana, if anyone. */
-  assignee?: { gid?: string; name?: string } | null;
+  assignee?: { gid?: string; name?: string; email?: string } | null;
   tags?: { gid?: string; name?: string }[];
 }
 
@@ -31,7 +31,7 @@ export interface AsanaProject {
 }
 
 const BASE = "https://app.asana.com/api/1.0";
-const TASK_FIELDS = "name,notes,html_notes,completed,permalink_url,num_subtasks,assignee.name,tags.name";
+const TASK_FIELDS = "name,notes,html_notes,completed,permalink_url,num_subtasks,assignee.name,assignee.email,tags.name";
 
 export class AsanaClient {
   constructor(

@@ -107,14 +107,12 @@ describe("who is working on a dispute (from Asana)", () => {
     expect((await repo.all()).find((r) => r.asana_task_id === "a2")?.location_assignee_name).toBe("Omar Haddad");
   });
 
-  it("the removal alert shows only location, reviewer and Google link: no agent, rating or task link", async () => {
+  it("the removal alert shows location, reviewer, who worked on it and both links, but no rating", async () => {
     const { repo } = await makeRepo();
     await syncAsana(people, repo, settings);
     const msg = buildRemovalMessage(await repo.all());
-    expect(msg.text).toContain("Location: Location A\nReviewer: R1\nGoogle review: https://maps.app.goo.gl/abc1");
-    for (const body of [msg.text, msg.html]) {
-      for (const gone of ["Worked on by", "Priya Nair", "Lena Fischer", "Rating", "Asana task", "app.asana.com"]) expect(body).not.toContain(gone);
-    }
+    expect(msg.text).toMatch(/Location: Location A\nReviewer: R1\nWorked on by: \S.*\nAsana task: https:\/\/app\.asana\.com\/\S+\nGoogle review: https:\/\/maps\.app\.goo\.gl\/abc1/);
+    for (const body of [msg.text, msg.html]) expect(body).not.toContain("Rating");
   });
 });
 

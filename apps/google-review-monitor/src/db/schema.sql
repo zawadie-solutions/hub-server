@@ -33,6 +33,9 @@ CREATE TABLE IF NOT EXISTS reviews (
   -- Who is working on it, from Asana: the dispute task's assignee and the location task's assignee.
   assignee_name VARCHAR(255),
   location_assignee_name VARCHAR(255),
+  -- Their Asana emails, to find them in Slack when the name does not match.
+  assignee_email VARCHAR(255),
+  location_assignee_email VARCHAR(255),
   -- Tagged "Successfully removed" in Asana as of the last sync: the team already knows, so no alert.
   asana_tagged_removed TINYINT(1) NOT NULL DEFAULT 0,
   UNIQUE KEY uq_reviews_asana_task (asana_task_id),

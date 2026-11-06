@@ -19,8 +19,6 @@ export interface RuntimeSettings {
   syncFreshMinutes: number;
   /** Use DataForSEO's priority queue for full runs too. */
   dataforseoPriority: boolean;
-  /** Whether the scheduler runs the automatic daily check. */
-  dailyCheckEnabled: boolean;
 }
 
 export const SOURCES = ["dataforseo", "apify", "places", "business-profile", "scrape"] as const;
@@ -42,7 +40,6 @@ const LABELS: Record<keyof RuntimeSettings, string> = {
   reviewsPerLocation: "Google reviews per location",
   syncFreshMinutes: "Minutes an Asana sync stays fresh",
   dataforseoPriority: "DataForSEO fast queue for full runs",
-  dailyCheckEnabled: "Automatic daily check",
 };
 
 export function envDefaults(): RuntimeSettings {
@@ -52,7 +49,6 @@ export function envDefaults(): RuntimeSettings {
     reviewsPerLocation: DEFAULT_REVIEWS_PER_LOCATION,
     syncFreshMinutes: 60,
     dataforseoPriority: config.dataforseoPriority,
-    dailyCheckEnabled: true,
   };
 }
 
@@ -91,7 +87,6 @@ export function parseSettings(input: Record<string, unknown>): Partial<RuntimeSe
   if (input.reviewsPerLocation !== undefined) out.reviewsPerLocation = wholeNumber(input.reviewsPerLocation, LABELS.reviewsPerLocation, REVIEWS_PER_LOCATION_LIMIT);
   if (input.syncFreshMinutes !== undefined) out.syncFreshMinutes = wholeNumber(input.syncFreshMinutes, LABELS.syncFreshMinutes, 7 * 24 * 60);
   if (input.dataforseoPriority !== undefined) out.dataforseoPriority = onOff(input.dataforseoPriority, LABELS.dataforseoPriority);
-  if (input.dailyCheckEnabled !== undefined) out.dailyCheckEnabled = onOff(input.dailyCheckEnabled, LABELS.dailyCheckEnabled);
   return out;
 }
 

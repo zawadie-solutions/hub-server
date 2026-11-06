@@ -44,7 +44,7 @@ describe("dashboard sign-in", () => {
   let close: () => void = () => {};
   beforeAll(async () => {
     // No endpoint used here reaches the database.
-    const app = createApp({ repo: {} as ReviewRepo, user: "admin", password: "s3cret", scheduleCron: "0 7 * * *", timezone: "Africa/Maputo" });
+    const app = createApp({ repo: {} as ReviewRepo, user: "admin", password: "s3cret" });
     const server = app.listen(0);
     await new Promise((r) => server.once("listening", r));
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

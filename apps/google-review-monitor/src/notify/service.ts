@@ -1,6 +1,6 @@
 import type { ReviewRepo } from "../db/repo";
 import { logger } from "../logger";
-import type { Notifier } from "../types";
+import type { Notifier, ReviewRow } from "../types";
 import { buildRemovalMessage } from "./message";
 
 export interface NotifySummary {
@@ -31,5 +31,29 @@ export async function notifyPending(
   }
   await repo.markNotified(ids, opts.stopCheckingAfterNotify);
   logger.info({ count: ids.length }, "removal notification sent");
+  await notifyAgents(repo, notifier, pending);
   return { pending: ids.length, sent: ids.length, failed: 0 };
+}
+
+/**
+ * After the leads have the full alert, each agent gets the part they worked on. Not retried:
+ * the alert already counts as sent, so a retry would send the leads a duplicate.
+ * Each outcome goes to the audit log, so a missed agent can be seen there.
+ */
+async function notifyAgents(repo: ReviewRepo, notifier: Notifier, rows: ReviewRow[]): Promise<void> {
+  if (!notifier.notifyAgents) return;
+  try {
+    for (const n of await notifier.notifyAgents(rows, buildRemovalMessage)) {
+      const reviews = `${n.reviews} removed review${n.reviews === 1 ? "" : "s"}`;
+      if (n.error) logger.warn({ agent: n.userId, err: n.error }, "agent removal alert failed");
+      else logger.info({ agent: n.userId, count: n.reviews }, "agent removal alert sent");
+      await repo.addAudit({
+        actor: "system",
+        action: n.error ? "notify.agent_failed" : "notify.agent",
+        summary: n.error ? `Could not send ${n.name} their removal alert (${reviews}): ${n.error}` : `Sent ${n.name} their removal alert (${reviews})`,
+      });
+    }
+  } catch (e) {
+    logger.error({ err: (e as Error).message }, "agent removal alerts failed");
+  }
 }

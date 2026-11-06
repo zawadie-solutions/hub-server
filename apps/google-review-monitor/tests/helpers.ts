@@ -37,7 +37,9 @@ export const review = (over: Partial<DiscoveredReview> = {}): DiscoveredReview =
   location: "Location A",
   month: "October",
   assigneeName: null,
+  assigneeEmail: null,
   locationAssigneeName: null,
+  locationAssigneeEmail: null,
   reviewerName: "John Smith",
   rating: 1,
   reviewText: "Terrible service, would not recommend.",
@@ -87,7 +89,7 @@ export const settings: AsanaSettings = {
 };
 
 export function fakeAsana(
-  tree: { month: string; location: string; assignee?: string; reviews: { gid: string; name: string; notes: string; assignee?: string; tags?: string[] }[] }[],
+  tree: { month: string; location: string; assignee?: string; reviews: { gid: string; name: string; notes: string; assignee?: string; assigneeEmail?: string; tags?: string[] }[] }[],
 ): AsanaSource {
   return {
     sections: async () => tree.map((t, i) => ({ gid: `s${i}`, name: t.month })),
@@ -97,7 +99,7 @@ export function fakeAsana(
     },
     subtasks: async (gid) => {
       const t = tree[Number(gid.replace("loc-s", ""))];
-      return t.reviews.map(({ assignee, tags, ...r }) => ({ ...r, assignee: assignee ? { name: assignee } : null, tags: (tags ?? []).map((name) => ({ name })), permalink_url: `https://app.asana.com/0/1/${r.gid}` }));
+      return t.reviews.map(({ assignee, assigneeEmail, tags, ...r }) => ({ ...r, assignee: assignee || assigneeEmail ? { name: assignee, email: assigneeEmail } : null, tags: (tags ?? []).map((name) => ({ name })), permalink_url: `https://app.asana.com/0/1/${r.gid}` }));
     },
   };
 }

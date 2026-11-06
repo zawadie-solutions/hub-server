@@ -38,8 +38,9 @@ export class ReviewRepo {
     if (!row) {
       await this.db.query(
         `INSERT INTO reviews (asana_task_id, asana_task_name, asana_task_url, asana_project_gid, location, month,
-           reviewer_name, rating, review_text, google_review_url, assignee_name, location_assignee_name, asana_tagged_removed)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+           reviewer_name, rating, review_text, google_review_url, assignee_name, location_assignee_name, asana_tagged_removed,
+           assignee_email, location_assignee_email)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
         [
           d.asanaTaskId,
           d.asanaTaskName,
@@ -54,6 +55,8 @@ export class ReviewRepo {
           d.assigneeName,
           d.locationAssigneeName,
           d.taggedRemoved,
+          d.assigneeEmail,
+          d.locationAssigneeEmail,
         ],
       );
       return true;
@@ -62,7 +65,8 @@ export class ReviewRepo {
     const urlChanged = row.google_review_url !== d.googleReviewUrl;
     await this.db.query(
       `UPDATE reviews SET asana_task_name=$2, asana_task_url=$3, asana_project_gid=$4, location=$5, month=$6, reviewer_name=$7,
-         rating=$8, google_review_url=$9, review_text=$10, assignee_name=$11, location_assignee_name=$12, asana_tagged_removed=$13, updated_at=now(3)
+         rating=$8, google_review_url=$9, review_text=$10, assignee_name=$11, location_assignee_name=$12, asana_tagged_removed=$13,
+         assignee_email=$14, location_assignee_email=$15, updated_at=now(3)
          ${urlChanged ? ", status='UNKNOWN', removed_at=NULL, notification_sent=false, notification_sent_at=NULL, monitoring_active=true, last_error=NULL" : ""}
        WHERE id=$1`,
       [
@@ -79,6 +83,8 @@ export class ReviewRepo {
         d.assigneeName,
         d.locationAssigneeName,
         d.taggedRemoved,
+        d.assigneeEmail,
+        d.locationAssigneeEmail,
       ],
     );
     return false;
@@ -98,7 +104,8 @@ export class ReviewRepo {
   async removedReviews(opts: { projectGid?: string; limit?: number } = {}): Promise<ReviewRow[]> {
     const p: unknown[] = [];
     const proj = opts.projectGid ? `AND asana_project_gid = $${p.push(opts.projectGid)}` : "";
-    const limit = opts.limit ?? 100;
+    // The dashboard filters, sorts and pages this list itself, so it gets the whole month's.
+    const limit = opts.limit ?? 2000;
     const r = await this.db.query<ReviewRow>(
       `SELECT * FROM reviews WHERE status='REVIEW_REMOVED' ${proj} ORDER BY removed_at DESC, id DESC LIMIT $${p.push(limit)}`,
       p,
@@ -124,6 +131,22 @@ export class ReviewRepo {
       p,
     );
     return r.rows.map((x) => ({ location: x.location, count: Number(x.n) }));
+  }
+
+  /**
+   * Everyone a month's disputes are worked on by (the dispute's assignee, else the location's,
+   * as on the dashboard), with how many disputes each has. Nobody-assigned disputes are left out.
+   */
+  async workers(projectGid?: string): Promise<{ name: string; disputes: number }[]> {
+    const p: unknown[] = [];
+    const where = projectGid ? `AND asana_project_gid = $${p.push(projectGid)}` : "";
+    const r = await this.db.query<{ who: string; n: string }>(
+      `SELECT who, COUNT(*) AS n FROM (
+         SELECT COALESCE(NULLIF(assignee_name, ''), NULLIF(location_assignee_name, '')) AS who FROM reviews WHERE 1=1 ${where}
+       ) x WHERE who IS NOT NULL GROUP BY who ORDER BY who`,
+      p,
+    );
+    return r.rows.map((x) => ({ name: x.who, disputes: Number(x.n) }));
   }
 
   /** Every review of one location (null = reviews with no location), in Asana order. */

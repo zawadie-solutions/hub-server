@@ -40,7 +40,9 @@ for (const [i, name] of people.entries()) {
     month: months[i % 2],
     // Each location has someone on it; a few disputes are assigned to someone else.
     assigneeName: i % 4 === 1 ? "Priya Nair" : null,
+    assigneeEmail: null,
     locationAssigneeName: ["Daniel Okoro", "Lena Fischer", null][i % 3],
+    locationAssigneeEmail: null,
     reviewerName: name,
     rating: (i % 5) + 1,
     reviewText: texts[i],
@@ -72,12 +74,10 @@ for (const [actor, action, summary] of [
   ["demo", "run.finished", "Check of October finished: 4 reviews checked, 1 removed, 0 could not be checked; removal alert sent"],
   ["demo", "location.checked", "Checked Location A: 1 review — 1 still available, 0 removed, 0 could not be checked"],
   ["demo", "google.loaded", "Loaded the latest Google reviews for Location B"],
-  ["scheduler", "daily.started", "Daily check started"],
-  ["scheduler", "daily.finished", "Daily check finished"],
 ]) {
   await repo.addAudit({ actor, action, summary });
 }
 
-createApp({ repo, user: "demo", password: "demo", scheduleCron: "0 7 * * *", timezone: "Africa/Maputo" }).listen(3100, () =>
+createApp({ repo, user: "demo", password: "demo" }).listen(3100, () =>
   console.log("Preview at http://localhost:3100  (login: demo / demo)"),
 );

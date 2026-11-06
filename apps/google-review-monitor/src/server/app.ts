@@ -13,7 +13,6 @@ import type { RuntimeSettings } from "../settings";
 import type { Notifier, ReviewChecker } from "../types";
 import { dashboardHtml } from "./dashboard";
 import { loginHtml } from "./login";
-import { nextScheduledRun } from "./schedule";
 import { createSession, LoginThrottle, readCookie, SESSION_COOKIE, SESSION_TTL_MS, verifySession } from "./session";
 
 const asset = (name: string) => fileURLToPath(new URL(`./assets/${name}`, import.meta.url));
@@ -83,7 +82,6 @@ export interface ConfigView {
   settings: RuntimeSettings;
   overridden: boolean;
   sources: { id: string; label: string; configured: boolean }[];
-  schedule: { cron: string; timezone: string; nextCheckAt: string | null };
   connections: { label: string; ok: boolean; detail: string }[];
 }
 
@@ -94,7 +92,6 @@ export interface ConfigStore {
   update(input: Record<string, unknown>, actor: string): Promise<{ changes: string[] }>;
   reset(actor: string): Promise<void>;
   accounts(): Promise<AccountStatus[]>;
-  dailyCheckEnabled(): boolean;
 }
 
 /** Something running for a month in this process: a full check, or a sync from Asana only. */
@@ -134,8 +131,6 @@ export function createApp(opts: {
   repo: ReviewRepo;
   user: string;
   password: string;
-  scheduleCron: string;
-  timezone: string;
   monthRunner?: MonthRunnerOpts;
   /** Enables the "Load Google reviews" button. Omit when no reviews source key is configured. */
   loadPlaceReviews?: (location: string, reviewUrls: string[]) => Promise<PlaceReviews | null>;
@@ -254,14 +249,12 @@ export function createApp(opts: {
   });
   app.get(
     "/api/summary",
-    api(async (req) => ({
-      ...(await opts.repo.summary(projectGidParam(req))),
-      nextCheckAt: opts.config && !opts.config.dailyCheckEnabled() ? null : (nextScheduledRun(opts.scheduleCron, opts.timezone)?.toISOString() ?? null),
-    })),
+    api((req) => opts.repo.summary(projectGidParam(req))),
   );
   app.get("/api/months", api(() => opts.repo.distinctProjects()));
   app.get("/api/removed", api((req) => opts.repo.removedReviews({ projectGid: projectGidParam(req) })));
   app.get("/api/locations", api((req) => opts.repo.locations(projectGidParam(req))));
+  app.get("/api/workers", api((req) => opts.repo.workers(projectGidParam(req))));
   app.get(
     "/api/reviews",
     api((req) => {
