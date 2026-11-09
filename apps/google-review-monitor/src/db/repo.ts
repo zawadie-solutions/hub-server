@@ -16,6 +16,10 @@ export interface AsanaProjectRow {
   run_status: "idle" | "running" | "done" | "failed";
   last_run_error: string | null;
   updated_at: Date;
+  /** When the month's last full check started; cleared once a check finishes. Set = a check stopped part-way. */
+  check_started_at: Date | null;
+  /** That check's "Run options" selection, as JSON (null = all of the month). */
+  check_select: string | null;
 }
 
 export interface AuditRow {
@@ -163,9 +167,10 @@ export class ReviewRepo {
     const where = projectGid ? `WHERE asana_project_gid = $${p.push(projectGid)}` : "";
     const r = await this.db.query<{ status: string; n: string }>(`SELECT status, COUNT(*) AS n FROM reviews ${where} GROUP BY status`, p);
     const by = Object.fromEntries(r.rows.map((x) => [x.status, Number(x.n)]));
-    const m = await this.db.query<{ last_check: Date | null; last_notified: Date | null; failing: string | null; tagged: string | null }>(
+    const m = await this.db.query<{ last_check: Date | null; last_notified: Date | null; failing: string | null; tagged: string | null; never: string | null }>(
       `SELECT MAX(last_checked_at) AS last_check, MAX(notification_sent_at) AS last_notified,
               SUM(asana_tagged_removed) AS tagged,
+              SUM(CASE WHEN status='UNKNOWN' AND last_checked_at IS NULL THEN 1 ELSE 0 END) AS never,
               SUM(CASE WHEN status='REVIEW_REMOVED' AND notification_sent=false AND last_notification_error IS NOT NULL THEN 1 ELSE 0 END) AS failing
        FROM reviews ${where}`,
       p,
@@ -174,7 +179,10 @@ export class ReviewRepo {
       monitored: Object.values(by).reduce((a, b) => a + b, 0),
       exists: by.REVIEW_EXISTS ?? 0,
       removed: by.REVIEW_REMOVED ?? 0,
-      unknown: by.UNKNOWN ?? 0,
+      /** Checked, but the check could not tell whether the review is still on Google. */
+      unknown: (by.UNKNOWN ?? 0) - Number(m.rows[0]?.never ?? 0),
+      /** Synced from Asana but never checked yet. */
+      notChecked: Number(m.rows[0]?.never ?? 0),
       /** Tagged "Successfully removed" in Asana (counted apart: overlaps the statuses above). */
       taggedRemoved: Number(m.rows[0]?.tagged ?? 0),
       lastCheckAt: m.rows[0]?.last_check ?? null,
@@ -317,6 +325,33 @@ export class ReviewRepo {
   async reviewsByProject(projectGid: string): Promise<ReviewRow[]> {
     const r = await this.db.query<ReviewRow>("SELECT * FROM reviews WHERE asana_project_gid = $1 ORDER BY id", [projectGid]);
     return r.rows;
+  }
+
+  /** Remembers that a check of the month started now (with its selection), so it can be continued if it stops. */
+  async startCheck(projectGid: string, select: string | null): Promise<void> {
+    await this.db.query("UPDATE asana_month_projects SET check_started_at = now(3), check_select = $2 WHERE project_gid = $1", [projectGid, select]);
+  }
+
+  /** The month's check finished: there is nothing left to continue. */
+  async clearCheck(projectGid: string): Promise<void> {
+    await this.db.query("UPDATE asana_month_projects SET check_started_at = NULL, check_select = NULL WHERE project_gid = $1", [projectGid]);
+  }
+
+  /** Reviews in the month whose last check could not tell whether they are still on Google, by location. */
+  async failedChecks(projectGid: string): Promise<ReviewRow[]> {
+    const r = await this.db.query<ReviewRow>(
+      "SELECT * FROM reviews WHERE asana_project_gid = $1 AND status = 'UNKNOWN' AND last_checked_at IS NOT NULL ORDER BY location, id",
+      [projectGid],
+    );
+    return r.rows;
+  }
+
+  /** How many reviews in each month have a failed last check. */
+  async failedCheckCounts(): Promise<{ projectGid: string; count: number }[]> {
+    const r = await this.db.query<{ projectGid: string; count: number }>(
+      "SELECT asana_project_gid AS projectGid, COUNT(*) AS count FROM reviews WHERE status = 'UNKNOWN' AND last_checked_at IS NOT NULL GROUP BY asana_project_gid",
+    );
+    return r.rows.map((x) => ({ projectGid: x.projectGid, count: Number(x.count) }));
   }
 
   /** Records that the project was just read from Asana, whatever happens to the rest of the run. */

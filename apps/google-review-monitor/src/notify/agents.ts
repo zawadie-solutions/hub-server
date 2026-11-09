@@ -46,12 +46,23 @@ export function matchAgent(agents: Agent[], row: Parameters<typeof workedOnByPer
   return null;
 }
 
-/** Each agent with the removed reviews they worked on. Agents with none are left out. */
+/**
+ * What each agent is sent: the removed reviews they worked on, plus every review nobody is
+ * assigned to in Asana (so someone picks those up). Reviews assigned to anyone else (e.g. the
+ * lead) are not theirs. Agents left with nothing are left out.
+ */
 export function reviewsByAgent(agents: Agent[], rows: ReviewRow[]): Map<Agent, ReviewRow[]> {
-  const out = new Map<Agent, ReviewRow[]>();
+  const own = new Map<Agent, ReviewRow[]>(agents.map((a) => [a, []]));
+  const unassigned: ReviewRow[] = [];
   for (const row of rows) {
+    if (!workedOnByPerson(row)) {
+      unassigned.push(row);
+      continue;
+    }
     const agent = matchAgent(agents, row);
-    if (agent) out.set(agent, [...(out.get(agent) ?? []), row]);
+    if (agent) own.get(agent)!.push(row);
   }
+  const out = new Map<Agent, ReviewRow[]>();
+  for (const [agent, theirs] of own) if (theirs.length || unassigned.length) out.set(agent, [...theirs, ...unassigned]);
   return out;
 }

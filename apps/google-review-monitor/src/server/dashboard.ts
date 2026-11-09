@@ -18,6 +18,7 @@ export const dashboardHtml = `<!doctype html>
     --magenta:#E51A5A; --magenta-dark:#C8134C; --magenta-tint:#FDECF1; --magenta-ink:#C8134C; --link:#E51A5A;
     --green:#1DB881; --green-dark:#065F46; --green-tint:#D1FAE5; --green-line:#BBF0DA;
     --red:#991B1B; --red-tint:#FEE2E2; --red-line:#F7B9B9;
+    --amber:#92400E; --amber-tint:#FEF6E4; --amber-line:#F5D9A8;
   }
   /* Dark theme: pitch-black page, near-black surfaces; the magenta shell is unchanged. */
   :root[data-theme="dark"]{
@@ -25,6 +26,7 @@ export const dashboardHtml = `<!doctype html>
     --magenta-tint:#2B0A16; --magenta-ink:#FF8FB1; --link:#FF6B98;
     --green-dark:#6EE7B7; --green-tint:#06281D; --green-line:#0F4A36;
     --red:#FCA5A5; --red-tint:#2A0C0C; --red-line:#5B1A1A;
+    --amber:#FCD34D; --amber-tint:#1F1705; --amber-line:#4A3810;
   }
   *{box-sizing:border-box}
   html{color-scheme:light}
@@ -251,6 +253,8 @@ export const dashboardHtml = `<!doctype html>
   .totals .line .k i{flex:none;width:8px;height:8px;border-radius:50%;background:var(--muted)}
   .totals .line.green .k i{background:var(--green)} .totals .line.red .k i{background:var(--red)}
   .totals .line.asana .k i{background:var(--green-dark)}
+  .totals .line:not(.green):not(.red):not(.asana):not(.never) .k i{background:var(--amber)}
+  .totals .line.never .k i{background:transparent;border:1.5px solid var(--muted)}
   .totals .line .v{font-weight:600;text-align:right}
   .totals .line .p{color:var(--muted);font-size:12.5px;text-align:right}
   .totals .line.hot .v{color:var(--red)}
@@ -329,6 +333,26 @@ export const dashboardHtml = `<!doctype html>
   .rnote b{font-weight:600}
   .rnote .sub{color:var(--muted)}
   .rtools .shown{margin-left:auto;font-size:12.5px;color:var(--red);opacity:.85;white-space:nowrap;font-variant-numeric:tabular-nums}
+  /* "Couldn't check": collapsed until opened, and only there when a month has some. */
+  .card.warn{background:var(--amber-tint);border-color:var(--amber-line);padding:0}
+  .fhead{display:flex;align-items:center;gap:10px;width:100%;padding:14px 18px;font:inherit;text-align:left;color:inherit;background:none;border:0;border-radius:10px;cursor:pointer}
+  .fhead .headline{color:var(--amber)}
+  .fhead .subline{color:var(--amber);opacity:.85}
+  .fhead .chev{flex:none;margin-left:auto;width:16px;height:16px;fill:none;stroke:var(--amber);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;transition:transform .18s}
+  .fhead[aria-expanded="true"] .chev{transform:rotate(180deg)}
+  .fbody{padding:0 18px 16px}
+  .fbody .rtools .shown{color:var(--amber)}
+  .freasons{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+  .freasons button{font:inherit;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;color:var(--text);background:var(--surface);border:1px solid var(--amber-line);border-radius:999px;cursor:pointer}
+  .freasons button .n{color:var(--muted);font-variant-numeric:tabular-nums}
+  .freasons button[aria-pressed="true"]{color:#fff;background:var(--magenta);border-color:var(--magenta)}
+  .freasons button[aria-pressed="true"] .n{color:#fff;opacity:.85}
+  .fwhy{font-size:12.5px;color:var(--muted);margin:10px 0 0}
+  .fbody .removed-list li{border-color:var(--amber-line)}
+  .fbody .pager button{border-color:var(--amber-line)}
+  .fretry{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--amber-line);font-size:12.5px;color:var(--muted)}
+  .fretry .btn{flex:none}
+  .monthnote .linkbtn{font:inherit;font-weight:600;color:var(--link);background:none;border:0;padding:0;margin-left:4px;cursor:pointer;text-decoration:underline}
   .pager{display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap;margin-top:12px}
   .pager button{font:inherit;font-size:13px;font-weight:600;min-width:34px;height:34px;padding:0 10px;color:var(--text);background:var(--surface);border:1px solid var(--red-line);border-radius:8px;cursor:pointer;font-variant-numeric:tabular-nums;display:inline-flex;align-items:center;justify-content:center;gap:4px}
   .pager button:hover:not(:disabled){border-color:var(--red)}
@@ -545,7 +569,7 @@ export const dashboardHtml = `<!doctype html>
       <li><span><b>Look at "Last check" before pressing Run now.</b><span class="d">Don't re-run reviews checked in the last 7 days.</span><span class="w">Where: the line under the <i>Insights</i> heading, e.g. "Last check: Today, 9:01 PM".</span></span></li>
       <li><span><b>One person runs the month checks.</b><span class="d">Everyone else uses Check now on single locations.</span></span></li>
     </ol>
-    <p class="ok">"Could not be checked" isn't lost. Those reviews are tried again on the next run of that month.</p>
+    <p class="ok">"Couldn’t be checked" isn’t lost. Open the yellow box on Insights to see why, and press Retry all to check just those again.</p>
   </div>
   <div class="ft">
     <label><input type="checkbox" id="howtoHide">Don't show this again</label>
@@ -609,6 +633,7 @@ export const dashboardHtml = `<!doctype html>
           <p class="lead">Applies when you press Run. The whole month is still synced from Asana first.</p>
           <div class="grp" id="runScopeLabel">Reviews to check</div>
           <div role="radiogroup" aria-labelledby="runScopeLabel">
+            <label class="radio" id="runResumeRow" hidden><input type="radio" name="runScope" value="resume"><span id="runResumeLabel">Continue where the last check stopped</span></label>
             <label class="radio"><input type="radio" name="runScope" value="all" checked><span id="runAllLabel">All of this month's reviews</span></label>
             <label class="radio"><input type="radio" name="runScope" value="first"><span>The first</span><input type="number" id="runFirst" min="1" step="50" value="700" aria-label="Number of reviews from the start"><span>reviews</span></label>
             <label class="radio"><input type="radio" name="runScope" value="last"><span>The last</span><input type="number" id="runLast" min="1" step="50" value="700" aria-label="Number of reviews from the end"><span>reviews</span></label>
@@ -631,7 +656,7 @@ export const dashboardHtml = `<!doctype html>
         <div class="runbar indet" id="runBar" role="progressbar" aria-label="Check progress"><i id="runFill"></i></div>
       </div>
       <div class="banner bad" id="failBanner"></div>
-      <div class="banner note" id="unknownBanner"></div>
+      <div id="failedBox" hidden></div>
 
         <div class="card overview">
           <div class="totals" id="stats"><span class="skel short"></span><span class="skel big"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>
@@ -748,22 +773,23 @@ export const dashboardHtml = `<!doctype html>
             <p>Your choice is remembered in your browser. <i class="ui">Back to defaults</i> in Run options returns to all reviews.</p>
             <h3>A whole month: Run now</h3>
             <p>With <i class="ui">All of this month's reviews</i> chosen in Run options, <i class="ui">Run now</i> checks every review in the month. A bar shows which location is being checked and how far along it is. <i class="ui">Cancel</i> stops it after the current review; anything already found removed is still alerted.</p>
+            <p>If a check stops part-way (cancelled, failed, or the server restarted), the line under the page title says how many were checked and shows <i class="ui">Continue (N left)</i>. It checks only the reviews the stopped check hadn't reached, in the same order, without reading Asana again. The same choice is in Run options as <i class="ui">Continue where the last check stopped</i>.</p>
             <h3>Sync from Asana</h3>
-            <p><i class="ui">Sync from Asana</i> brings in new and changed dispute tasks for the month without checking Google. Use it after the team adds disputes in Asana. Run now also syncs first, unless the month was synced recently (how recently is set on Configure). Tick <i class="ui">Sync from Asana first anyway</i> in Run options to always sync.</p>
+            <p><i class="ui">Sync from Asana</i> brings in new and changed dispute tasks for the month without checking Google. Use it after the team adds disputes in Asana. Run now also syncs first, unless the month was synced recently (how recently is set on Configure). Tick <i class="ui">Sync from Asana first anyway</i> in Run options to always sync. A sync can be stopped with <i class="ui">Cancel</i>; nothing from a cancelled sync is saved, and the month keeps its previous sync.</p>
           </section>
 
           <section class="card" id="g-results">
             <h2>Reading the results</h2>
             <h3>The stats card</h3>
             <ul>
-              <li><b>Reviews monitored</b>: disputes in the chosen month, split into <i class="ui">Still available</i>, <i class="ui">Removed</i>, <i class="ui">Could not be checked</i>, and <i class="ui">Removed in Asana</i> (tagged "Successfully removed" by the team).</li>
+              <li><b>Reviews monitored</b>: disputes in the chosen month, split into <i class="ui">Still available</i>, <i class="ui">Removed</i>, <i class="ui">Couldn’t be checked</i> (a check ran but couldn’t tell), <i class="ui">Not checked yet</i>, and <i class="ui">Removed in Asana</i> (tagged "Successfully removed" by the team).</li>
               <li><b>Disputes synced from Asana</b>: the total across every synced month, with rings showing how many months are synced (all, Managed, Legacy).</li>
             </ul>
             <h3>What each status means</h3>
             <dl>
               <dt><span class="tag sent">Still available</span></dt><dd>The review is still on Google.</dd>
               <dt><span class="tag failed">Removed</span></dt><dd>Google no longer shows it. Every removal is checked twice before it counts.</dd>
-              <dt><span class="tag pending">Could not be checked</span></dt><dd>The scraper didn't get an answer from Google this time. It's tried again on the next run.</dd>
+              <dt><span class="tag pending">Could not be checked</span></dt><dd>The last check couldn't tell whether the review is still on Google. When a month has any, a yellow <i class="ui">⚠ N reviews couldn’t be checked</i> box appears under the page title. Click it to see which ones and why, filter by reason, and press <i class="ui">Retry all</i> to check just those again.</dd>
             </dl>
             <h3>Review status: the removed list</h3>
             <ul>
@@ -779,7 +805,7 @@ export const dashboardHtml = `<!doctype html>
             <p>When a check finds reviews removed, a Slack message is sent with each review's location, reviewer, who worked on it, the Asana task and the Google link.</p>
             <ul>
               <li><b>Vanessa</b> gets every removal. Reviews nobody is assigned to come last, under <i class="ui">Not assigned in Asana</i>.</li>
-              <li><b>Jessica, Papy and Manasse</b> each get a message with only the removals they worked on.</li>
+              <li><b>Jessica, Papy and Manasse</b> each get a message with the removals they worked on, plus every removal nobody is assigned to in Asana, so someone picks those up.</li>
               <li>A review is alerted <b>once</b>. Reviews already tagged "Successfully removed" in Asana are never alerted.</li>
               <li>If Slack fails, the alert is tried again on the next run. Who got what is on the <i class="ui">Audit</i> page.</li>
             </ul>
@@ -813,7 +839,7 @@ export const dashboardHtml = `<!doctype html>
             <h2>Questions</h2>
             <dl class="faq">
               <dt>I can't find a month.</dt><dd>Check the filter icon in the month bar: it may be set to Managed or Legacy only. A month that says <i class="ui">Not synced</i> needs <i class="ui">Sync from Asana</i> first.</dd>
-              <dt>Lots of reviews say "Could not be checked".</dt><dd>The scraper may be starting up, blocked by Google for a moment, or out of free-plan checks for the month. They're retried on the next run; nothing is lost.</dd>
+              <dt>Lots of reviews say "Could not be checked".</dt><dd>The scraper may be starting up, blocked by Google for a moment, or out of free-plan checks for the month. Open the yellow <i class="ui">couldn’t be checked</i> box to see the reason for each, then use <i class="ui">Retry all</i>; nothing is lost.</dd>
               <dt>Someone's name isn't in the Worked on by filter.</dt><dd>They have no removed reviews this month yet, so they're listed at the bottom under <i class="ui">No removals yet</i>.</dd>
               <dt>A review shows the wrong person.</dt><dd>Fix the assignee in Asana, then press <i class="ui">Sync from Asana</i>.</dd>
               <dt>Someone didn't get their Slack alert.</dt><dd>Look on the <i class="ui">Audit</i> page for "Sent … their removal alert" or "Could not send …", and tell the person who looks after the monitor.</dd>
@@ -939,16 +965,22 @@ const takesDepth=c=>c.settings.reviewChecker==='dataforseo'||c.settings.reviewCh
 try{Object.assign(runOptions,JSON.parse(localStorage.getItem('runOptions')||'{}'))}catch(e){}
 const wholeNumber=(v,min)=>Number.isInteger(v)&&v>=min;
 /** What to send with a run request; nothing extra when the options are at their defaults. */
+/** This month's stopped check, if there is one: {left,total}. */
+function monthResume(){const m=availableMonths.find(x=>x.projectGid===currentProject);return m&&m.resume&&m.resume.left?m.resume:null}
 function runRequest(){
   const o={};
+  if(runOptions.scope==='resume'&&monthResume())return {mode:'continue'};
   if(runOptions.scope==='first'&&wholeNumber(runOptions.first,1))o.select={from:'first',count:runOptions.first};
   if(runOptions.scope==='last'&&wholeNumber(runOptions.last,1))o.select={from:'last',count:runOptions.last};
   if(runOptions.forceSync)o.forceSync=true;
   return o;
 }
-function runLabel(){const r=runRequest();return r.select?'Run '+r.select.from+' '+r.select.count.toLocaleString():'Run now'}
+function runLabel(){const r=runRequest();return r.mode==='continue'?'Continue · '+monthResume().left.toLocaleString()+' left':r.select?'Run '+r.select.from+' '+r.select.count.toLocaleString():'Run now'}
 function renderRunOptions(){
-  const r=runRequest(), parts=[];
+  const r=runRequest(), parts=[], res=monthResume();
+  if(r.mode==='continue')parts.push('continuing the stopped check ('+res.left.toLocaleString()+' of '+res.total.toLocaleString()+' reviews left)');
+  $('runResumeRow').hidden=!res;
+  if(res)$('runResumeLabel').textContent='Continue where the last check stopped ('+res.left.toLocaleString()+' of '+res.total.toLocaleString()+' left)';
   if(r.select)parts.push('the '+r.select.from+' '+r.select.count.toLocaleString()+' reviews');
   if(r.forceSync)parts.push('syncing from Asana first');
   $('runForceSync').checked=!!runOptions.forceSync;
@@ -956,7 +988,8 @@ function renderRunOptions(){
     :'Run now skips the Asana sync when this month was synced in the last '+syncFresh+' minute'+(syncFresh===1?'':'s')+'. Tick this when Asana has changed since.';
   $('runPlan').textContent=parts.length?'Next run: '+parts.join(', ')+'.':'';
   $('runAllLabel').textContent='All of this month\u2019s reviews'+(monthTotal!==null?' ('+monthTotal.toLocaleString()+')':'');
-  for(const x of document.querySelectorAll('input[name=runScope]'))x.checked=x.value===runOptions.scope;
+  const scope=runOptions.scope==='resume'&&!res?'all':runOptions.scope;
+  for(const x of document.querySelectorAll('input[name=runScope]'))x.checked=x.value===scope;
   if(document.activeElement!==$('runFirst'))$('runFirst').value=runOptions.first;
   if(document.activeElement!==$('runLast'))$('runLast').value=runOptions.last;
   $('runDepthBox').hidden=sharedDepth===null;
@@ -1191,22 +1224,29 @@ async function loadMonths(){
   monthRunning=!!running;
   btn.disabled=monthRunning;
   if(!monthRunning){runState=null;cancelPending=false;clearTimeout(pollTimer);setBtn(btn,runLabel(),false,PLAY);$('runOpts').disabled=false;$('syncNow').disabled=false;setBtn($('syncNow'),'Sync from Asana',false)}
-  renderRun();
+  renderRun();renderRunOptions();
   if(monthRunning&&!runState)pollRun();
-  $('monthNote').textContent=running?''
+  const note=$('monthNote'), res=monthResume();
+  note.textContent=running?''
     :m&&m.lastRunError==='cancelled'?'Last run was cancelled before it finished.'
     :m&&m.lastRunError?'Last run failed: '+m.lastRunError
     :m&&m.lastSyncedAt?'Last synced '+dayLabel(m.lastSyncedAt)+', '+timeLabel(m.lastSyncedAt)
     :'Never synced yet — click Sync from Asana to bring this month in, or Run now to sync and check it.';
+  // A check that stopped part-way (cancelled, failed or cut off by a restart) can be picked up where it stopped.
+  if(!running&&res){
+    note.append(document.createTextNode((note.textContent?' ':'')+(res.total-res.left).toLocaleString()+' of '+res.total.toLocaleString()+' reviews were checked.'));
+    const b=el('button','Continue ('+res.left.toLocaleString()+' left)','linkbtn');b.type='button';
+    b.onclick=()=>startRun({mode:'continue'});
+    note.append(b);
+  }
 }
 
 /** Draws the run panel, the Run button's label and the Cancel button from monthRunning / runState. */
 function renderRun(){
   const running=monthRunning||!!runState;
   $('runStatus').hidden=!running;
-  // A sync cannot be stopped part-way (it is one read of Asana), so it has no Cancel.
   const syncing=!!(runState&&runState.kind==='sync');
-  $('cancelRun').hidden=!running||syncing;
+  $('cancelRun').hidden=!running;
   if(!running)return;
   const p=runState, btn=$('runNow'), cancel=$('cancelRun'), sync=$('syncNow');
   const cancelling=cancelPending||!!(p&&p.cancelRequested);
@@ -1214,9 +1254,9 @@ function renderRun(){
   // While either one is going, both buttons are off: a month has one job at a time.
   btn.disabled=true;sync.disabled=true;$('runOpts').disabled=true;showRunOptions(false);
   if(syncing){
-    showSyncProgress(p,'Syncing this month from Asana…');
+    showSyncProgress(p,cancelling?'Stopping the sync… nothing will be saved':'Syncing this month from Asana…');
     $('runCount').textContent=syncCount(p)+'Not checking Google';
-    setBtn(sync,'Syncing…',true);
+    setBtn(sync,cancelling?'Stopping…':'Syncing…',true);
     setBtn(btn,runLabel(),false,PLAY);
     return;
   }
@@ -1292,17 +1332,18 @@ $('cancelRun').onclick=async()=>{
   if(!runState){cancelPending=false;refresh().catch(()=>{})}
 };
 
-$('runNow').onclick=async()=>{
-  if(!currentProject)return;
+$('runNow').onclick=()=>startRun(runRequest());
+async function startRun(request){
+  if(!currentProject||monthRunning)return;
   const m=availableMonths.find(x=>x.projectGid===currentProject);
   const btn=$('runNow');btn.disabled=true;$('syncNow').disabled=true;$('runOpts').disabled=true;showRunOptions(false);setBtn(btn,'Starting…',true);
   try{
-    const r=await fetch('api/run-month',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectGid:currentProject,name:m&&m.name,...runRequest()})});
+    const r=await fetch('api/run-month',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectGid:currentProject,name:m&&m.name,...request})});
     const j=await r.json();
     if(!j.started)$('monthNote').textContent='Could not start: '+(j.reason||'unknown error');
   }catch(e){$('monthNote').textContent='Failed to start: '+e.message}
   await loadMonths();
-};
+}
 
 function startOfDay(d){const x=new Date(d);x.setHours(0,0,0,0);return x}
 function dayLabel(d){
@@ -1324,7 +1365,7 @@ async function loadSummary(){
   st.append(el('div','Reviews monitored','cap'),big);
   countTo(big,'monitored',s.monitored);
   const rows=el('div',null,'rows');
-  for(const [k,v,c] of [['Still available',s.exists,'green'],['Removed',s.removed,'red'+(s.removed?' hot':'')],['Could not be checked',s.unknown,''],['Removed in Asana',s.taggedRemoved,'asana']]){
+  for(const [k,v,c] of [['Still available',s.exists,'green'],['Removed',s.removed,'red'+(s.removed?' hot':'')],['Couldn’t be checked',s.unknown,''],['Not checked yet',s.notChecked||0,'never'],['Removed in Asana',s.taggedRemoved,'asana']]){
     const line=el('div',null,'line '+c);
     const key=el('div',null,'k');key.append(document.createElement('i'),document.createTextNode(k));
     if(c==='asana')line.title='Tagged "Successfully removed" in Asana as of the last sync. Counted on its own, so it overlaps the lines above.';
@@ -1338,10 +1379,6 @@ async function loadSummary(){
   const fail=$('failBanner');
   if(s.notificationsFailing){fail.textContent=s.notificationsFailing+' removal notification(s) could not be emailed. They will be retried at the next run.';fail.classList.add('show')}
   else fail.classList.remove('show');
-
-  const unk=$('unknownBanner');
-  if(s.unknown){unk.textContent='⚠ '+s.unknown+' review(s) could not be checked. They will be tried again the next time this month is run.';unk.classList.add('show')}
-  else unk.classList.remove('show');
 
   return s;
 }
@@ -1517,6 +1554,98 @@ function renderRemoved(){
   box.append(c);
 }
 
+// ---- Couldn't check: reviews whose last check could not tell whether they are still on Google ----
+let failedRows=[], failedKey=null, failedOpen=false, failedReason='all', failedPage=1;
+/** The stored error, in plain words. The raw text stays in the row's tooltip. */
+function plainReason(err){
+  const e=String(err||'');
+  if(/apify/i.test(e)&&/40[23]/.test(e))return 'Apify refused the request (not paid for)';
+  if(/places/i.test(e)&&/40[23]/.test(e))return 'Google Places refused the request (not paid for)';
+  if(/dataforseo/i.test(e)&&/40[23]/.test(e))return 'DataForSEO refused the request (not paid for)';
+  if(/HTTP 402/.test(e))return 'The scraper had used up its allowance';
+  if(/HTTP 429|rate.?limit|too many/i.test(e))return 'The scraper was asked too often (rate limit)';
+  if(/neither the review nor/i.test(e))return 'Google’s page showed neither the review nor a removal message';
+  if(/does not identify a review/i.test(e))return 'The link doesn’t point to one specific review';
+  if(/not among the newest/i.test(e))return 'Too far down the business’s reviews to reach';
+  if(/time.?out|timed out|aborted/i.test(e))return 'The scraper took too long to answer';
+  if(/HTTP 5\\d\\d|ECONN|fetch failed|network/i.test(e))return 'The scraper or Google was unreachable';
+  return 'Other: '+(e.replace(/^(scrape: )?google check failed: /,'').slice(0,90)||'no reason recorded');
+}
+async function loadFailed(){
+  const m=availableMonths.find(x=>x.projectGid===currentProject);
+  if(!m||!m.failedChecks){failedRows=[];failedKey=null;$('failedBox').hidden=true;$('failedBox').replaceChildren();return}
+  const rows=await api(withProject('api/failed-checks'));
+  const key=currentProject+':'+rows.map(r=>r.id+'/'+r.last_checked_at).join(',');
+  if(key===failedKey&&$('failedBox').firstChild)return;
+  if(!failedKey||failedKey.split(':')[0]!==currentProject){failedOpen=false;failedReason='all';failedPage=1}
+  failedKey=key;failedRows=rows;renderFailed();
+}
+function renderFailed(){
+  const box=$('failedBox'), rows=failedRows;box.replaceChildren();
+  box.hidden=!rows.length;if(!rows.length)return;
+  const c=el('div',null,'card warn');
+  const head=document.createElement('button');head.type='button';head.className='fhead';head.setAttribute('aria-expanded',String(failedOpen));head.setAttribute('aria-controls','failedBody');
+  const t=el('div');
+  t.append(el('p','⚠ '+rows.length.toLocaleString()+' review'+(rows.length===1?'':'s')+' couldn’t be checked','headline'),
+    el('p','Their last check couldn’t tell whether the review is still on Google. '+(failedOpen?'Hide':'Show which')+'.','subline'));
+  head.innerHTML='';head.append(t);
+  head.insertAdjacentHTML('beforeend','<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>');
+  head.onclick=()=>{failedOpen=!failedOpen;renderFailed();const h=$('failedBox').querySelector('.fhead');if(h)h.focus()};
+  c.append(head);
+  if(failedOpen){
+    const body=el('div',null,'fbody');body.id='failedBody';
+    // Reasons, most common first, as filter chips.
+    const counts=new Map();for(const r of rows){const k=plainReason(r.last_error);counts.set(k,(counts.get(k)||0)+1)}
+    if(failedReason!=='all'&&!counts.has(failedReason))failedReason='all';
+    const chips=el('div',null,'freasons');chips.setAttribute('role','group');chips.setAttribute('aria-label','Why the check failed');
+    const chip=(value,label,n)=>{const b=document.createElement('button');b.type='button';b.setAttribute('aria-pressed',String(failedReason===value));b.append(document.createTextNode(label),el('span',n.toLocaleString(),'n'));b.onclick=()=>{failedReason=value;failedPage=1;renderFailed()};return b};
+    chips.append(chip('all','All reasons',rows.length));
+    for(const [k,n] of [...counts].sort((a,b)=>b[1]-a[1]))chips.append(chip(k,k,n));
+    body.append(chips);
+    const shown=rows.filter(r=>failedReason==='all'||plainReason(r.last_error)===failedReason);
+    const pages=Math.max(1,Math.ceil(shown.length/PAGE_SIZE));
+    failedPage=Math.min(Math.max(1,failedPage),pages);
+    const from=(failedPage-1)*PAGE_SIZE, page=shown.slice(from,from+PAGE_SIZE);
+    const list=el('ul',null,'removed-list');
+    for(const r of page){
+      const li=document.createElement('li');
+      const left=el('div',null,'left');
+      left.append(el('span',r.reviewer_name||'Unknown reviewer','who'),el('span',(r.location||'Unknown location')+'  ·  '+(workedOnBy(r)?'Worked on by '+workedOnBy(r):'Nobody assigned in Asana'),'where'));
+      if(failedReason==='all')left.append(el('span',plainReason(r.last_error),'where'));
+      left.title=r.last_error||'';
+      const right=el('div',null,'right');
+      right.append(el('span','Tried '+dayLabel(r.last_checked_at),'when'),logoLink('google',r.google_review_url),logoLink('asana',r.asana_task_url));
+      li.append(left,right);list.append(li);
+    }
+    const tools=el('div',null,'rtools');
+    tools.append(el('span',pages===1?shown.length.toLocaleString()+' shown':(from+1)+'–'+(from+page.length)+' of '+shown.length.toLocaleString(),'shown'));
+    body.append(tools,list);
+    if(pages>1){
+      const nav=el('nav',null,'pager');nav.setAttribute('aria-label','Pages of reviews that couldn’t be checked');
+      const go=p=>{failedPage=p;renderFailed();const cur=$('failedBox').querySelector('.pager [aria-current]');if(cur)cur.focus()};
+      const btn=(html,label,p,disabled)=>{const b=document.createElement('button');b.type='button';b.innerHTML=html;b.setAttribute('aria-label',label);b.disabled=disabled;b.onclick=()=>go(p);return b};
+      nav.append(btn('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Prev','Previous page',failedPage-1,failedPage===1));
+      for(const p of pageList(failedPage,pages)){
+        if(p===null){nav.append(el('span','…','gap'));continue}
+        const b=btn(String(p),'Page '+p,p,false);if(p===failedPage)b.setAttribute('aria-current','page');nav.append(b);
+      }
+      nav.append(btn('Next<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>','Next page',failedPage+1,failedPage===pages));
+      body.append(nav);
+    }
+    // Retry: checks only these reviews again, using the stored Asana sync.
+    const retry=el('div',null,'fretry');
+    const rb=el('button','Retry all '+rows.length.toLocaleString(),'btn ghost');rb.type='button';rb.disabled=monthRunning;
+    rb.onclick=()=>{
+      if(!confirm('Check these '+rows.length.toLocaleString()+' reviews against Google again?\\n\\nEach one is a call to the review service and counts toward its limit'+(rows.length>1000?' (that is more than the 1,000 per run we advise; you can Cancel part-way)':'')+'.'))return;
+      startRun({mode:'retry-failed'});
+    };
+    retry.append(rb,el('span','Checks only these reviews again, without re-reading Asana. Removals found are alerted as usual.'));
+    body.append(retry);
+    c.append(body);
+  }
+  box.append(c);
+}
+
 const NO_LOCATION='__none__';
 let currentLocation=null, locations=[], lastWorking=null;
 const locButtons=new Map();
@@ -1608,7 +1737,7 @@ $('checkLocation').onclick=async()=>{
       :'Could not check: '+(j.reason||'unknown error');
   }catch(e){note.textContent='Check failed: '+e.message}
   checkingLocation=false;setBtn(btn,'Check now',false);
-  await Promise.all([loadSummary(),loadStatus(),loadReviews(),loadActivity()]).catch(showReviewsError);
+  await Promise.all([loadSummary(),loadStatus(),loadReviews(),loadActivity(),loadFailed()]).catch(showReviewsError);
 };
 
 // Display only: shows the reviews Google returns for the selected location. Changes nothing.
@@ -1863,7 +1992,7 @@ function route(){
 }
 window.addEventListener('hashchange',route);
 
-async function refresh(){await loadMonths();await Promise.all([loadSummary(),loadStatus(),loadLocations(),loadActivity()])}
+async function refresh(){await loadMonths();await Promise.all([loadSummary(),loadStatus(),loadLocations(),loadActivity(),loadFailed()])}
 route();
 refresh().catch(e=>{$('schedule').textContent='Failed to load: '+e.message});
 setInterval(refresh,60000);

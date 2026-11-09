@@ -21,6 +21,13 @@ export interface WalkProgress {
   total: number;
 }
 
+/** Thrown out of a walk stopped with `isCancelled`. Nothing has been written when it is. */
+export class SyncCancelled extends Error {
+  constructor() {
+    super("cancelled");
+  }
+}
+
 export interface Assignee {
   name: string | null;
   email: string | null;
@@ -57,8 +64,12 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 export async function walkProject(
   client: AsanaSource,
   s: AsanaSettings,
-  opts: { concurrency?: number; onProgress?: (p: WalkProgress) => void } = {},
+  opts: { concurrency?: number; onProgress?: (p: WalkProgress) => void; isCancelled?: () => boolean } = {},
 ): Promise<WalkedTask[]> {
+  // Checked before every Asana call, so a cancel takes effect within one call per worker.
+  const stopIfCancelled = () => {
+    if (opts.isCancelled?.()) throw new SyncCancelled();
+  };
   const concurrency = opts.concurrency ?? 8;
   const out: WalkedTask[] = [];
   // Every task with subtasks costs one more Asana call, so "opened of found" is how far along the walk is.
@@ -80,8 +91,10 @@ export async function walkProject(
     const childLevels = await mapLimit(
       expandable,
       concurrency,
-      async ({ task, path, assignees }) =>
-        (await client.subtasks(task.gid)).map((sub) => ({ task: sub, path: [...path, sub.name], assignees: [...assignees, who(sub)] })),
+      async ({ task, path, assignees }) => {
+        stopIfCancelled();
+        return (await client.subtasks(task.gid)).map((sub) => ({ task: sub, path: [...path, sub.name], assignees: [...assignees, who(sub)] }));
+      },
       () => {
         done++;
         report();
@@ -90,7 +103,9 @@ export async function walkProject(
     await expand(childLevels.flat(), depth + 1);
   };
 
+  stopIfCancelled();
   for (const section of await client.sections(s.projectGid)) {
+    stopIfCancelled();
     const tasks = await client.sectionTasks(section.gid);
     await expand(
       tasks.map((task) => ({ task, path: [section.name, task.name], assignees: [null, who(task)] })),
@@ -150,10 +165,11 @@ export async function syncAsana(
   client: AsanaSource,
   repo: ReviewRepo,
   s: AsanaSettings,
-  opts: { onProgress?: (p: WalkProgress) => void } = {},
+  opts: { onProgress?: (p: WalkProgress) => void; isCancelled?: () => boolean } = {},
 ): Promise<SyncSummary> {
   let lastLogged = 0;
   const walked = await walkProject(client, s, {
+    isCancelled: opts.isCancelled,
     onProgress: (p) => {
       opts.onProgress?.(p);
       if (p.scanned - lastLogged >= 200) {

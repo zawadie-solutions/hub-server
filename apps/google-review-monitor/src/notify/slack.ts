@@ -14,8 +14,8 @@ interface SlackUser {
  * fail, the whole send throws so the cycle retries next run (a retry may re-DM someone who
  * already got it, but that's preferable to silently dropping a teammate's notification).
  *
- * The recipients are the leads, who get every removal. Agents (agentUserIds) are each sent
- * only the removals they worked on, after the leads' send went through: see notifyAgents.
+ * The recipients are the leads, who get every removal. Agents (agentUserIds) are each sent the
+ * removals they worked on plus the unassigned ones, after the leads' send went through: see notifyAgents.
  */
 export class SlackDmNotifier implements Notifier {
   constructor(
@@ -69,7 +69,7 @@ export class SlackDmNotifier implements Notifier {
     return { agents, notices };
   }
 
-  /** Sends each agent one DM with only the removed reviews they worked on. Never throws. */
+  /** Sends each agent one DM with the removed reviews they worked on plus every unassigned one. Never throws. */
   async notifyAgents(rows: ReviewRow[], build: (rows: ReviewRow[]) => RemovalMessage): Promise<AgentNotice[]> {
     if (!this.c.agentUserIds?.length) return [];
     const { agents, notices } = await this.agents();
