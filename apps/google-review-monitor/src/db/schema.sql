@@ -63,7 +63,10 @@ CREATE TABLE IF NOT EXISTS asana_month_projects (
   last_review_count INT,
   run_status VARCHAR(32) NOT NULL DEFAULT 'idle',
   last_run_error TEXT,
-  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  -- Set while a check of the month is unfinished (stopped part-way), so it can be continued.
+  check_started_at DATETIME(3),
+  check_select VARCHAR(64)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_cs;
 
 -- Who did what, and when: runs started/finished/cancelled, single-location checks, settings

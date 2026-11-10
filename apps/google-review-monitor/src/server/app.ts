@@ -8,7 +8,7 @@ import type { AccountStatus } from "../google/accounts";
 import type { PlaceReviews } from "../google/placesChecker";
 import { logger } from "../logger";
 import { checkWithConfirmation, prepareChecker } from "../monitor/cycle";
-import { runMonthCheck, type RunProgress, type RunSelection } from "../monitor/runMonth";
+import { checkFailed, notCheckedSince, runMonthCheck, runOrder, type RunProgress, type RunSelection, selectForRun } from "../monitor/runMonth";
 import type { RuntimeSettings } from "../settings";
 import type { Notifier, ReviewChecker } from "../types";
 import { dashboardHtml } from "./dashboard";
@@ -253,6 +253,14 @@ export function createApp(opts: {
   );
   app.get("/api/months", api(() => opts.repo.distinctProjects()));
   app.get("/api/removed", api((req) => opts.repo.removedReviews({ projectGid: projectGidParam(req) })));
+  // Reviews whose last check could not tell whether they are still on Google ("Couldn't check").
+  app.get(
+    "/api/failed-checks",
+    api(async (req) => {
+      const projectGid = projectGidParam(req);
+      return projectGid ? opts.repo.failedChecks(projectGid) : [];
+    }),
+  );
   app.get("/api/locations", api((req) => opts.repo.locations(projectGidParam(req))));
   app.get("/api/workers", api((req) => opts.repo.workers(projectGidParam(req))));
   app.get(
@@ -307,12 +315,18 @@ export function createApp(opts: {
       if (!opts.monthRunner) return [];
       const { client, asanaSettings } = opts.monthRunner;
       workspaceGid ??= await client.projectWorkspace(asanaSettings.projectGid);
-      const [managed, legacy, known, stored] = await Promise.all([
+      const [managed, legacy, known, stored, failed] = await Promise.all([
         client.searchProjects(workspaceGid, "Managed Disputes"),
         client.searchProjects(workspaceGid, LEGACY_QUERY),
         opts.repo.listAsanaProjects(),
         opts.repo.distinctProjects(),
+        opts.repo.failedCheckCounts(),
       ]);
+      const failedByGid = new Map(failed.map((x) => [x.projectGid, x.count]));
+      // Only months with an unfinished check cost a read of their reviews.
+      const unfinished = new Map(
+        await Promise.all(known.filter((k) => k.check_started_at).map(async (k) => [k.project_gid, await unfinishedCheck(k)] as const)),
+      );
       const knownByGid = new Map(known.map((k) => [k.project_gid, k]));
       const disputesByGid = new Map(stored.map((x) => [x.projectGid, x.count]));
       const found = new Map([...managed, ...legacy].map((p) => [p.gid, p]));
@@ -331,10 +345,31 @@ export function createApp(opts: {
             disputes: disputesByGid.get(p.gid) ?? 0,
             runStatus: k?.run_status ?? "idle",
             lastRunError: k?.last_run_error ?? null,
+            // A check that stopped part-way: how many reviews "Continue" would check, of the run's total.
+            resume: (() => {
+              const u = unfinished.get(p.gid);
+              return u ? { left: u.left, total: u.total } : null;
+            })(),
+            // Reviews whose last check failed ("Couldn't check").
+            failedChecks: failedByGid.get(p.gid) ?? 0,
           };
         });
     }),
   );
+
+  /** A check of the month that stopped part-way: when it started, its selection, and how many reviews it has left. */
+  const unfinishedCheck = async (k: { project_gid: string; check_started_at: Date | null; check_select: string | null; run_status: string }) => {
+    if (!k.check_started_at || k.run_status === "running") return null;
+    let select: RunSelection | undefined;
+    try {
+      select = parseSelection(k.check_select ? JSON.parse(k.check_select) : undefined);
+    } catch {
+      select = undefined;
+    }
+    const picked = selectForRun(runOrder(await opts.repo.reviewsByProject(k.project_gid)), select);
+    const left = picked.filter(notCheckedSince(k.check_started_at)).length;
+    return left ? { startedAt: k.check_started_at, select, left, total: picked.length } : null;
+  };
 
   // Runs live in this process, so their progress and cancel flags do too (lost on restart,
   // which is also when start.ts clears the 'running' marks they leave behind).
@@ -358,7 +393,7 @@ export function createApp(opts: {
       const run = liveRuns.get(projectGid);
       if (run) run.cancelRequested = true;
       else await opts.repo.finishAsanaRun(projectGid, { ok: false, error: CANCELLED });
-      await audit(actorOf(req), "run.cancel_requested", `Asked to cancel the check of ${await monthName(projectGid)}`);
+      await audit(actorOf(req), "run.cancel_requested", `Asked to cancel the ${run?.kind === "sync" ? "sync" : "check"} of ${await monthName(projectGid)}`);
       return { ok: true };
     }),
   );
@@ -370,7 +405,7 @@ export function createApp(opts: {
     "/api/run-month",
     api(async (req) => {
       if (!opts.monthRunner) return { started: false, reason: "not configured in this environment" };
-      const body = req.body as { projectGid?: string; name?: string; select?: unknown; maxReviews?: unknown; forceSync?: unknown };
+      const body = req.body as { projectGid?: string; name?: string; select?: unknown; maxReviews?: unknown; forceSync?: unknown; mode?: unknown };
       if (!body?.projectGid) throw new Error("projectGid required");
       const { projectGid } = body;
       const displayName = body.name ?? projectGid;
@@ -384,9 +419,22 @@ export function createApp(opts: {
       } catch (e) {
         return { started: false, reason: (e as Error).message };
       }
+      // "continue": the reviews a stopped check had not reached, with that check's selection.
+      // "retry-failed": only the reviews whose last check failed. Neither reads Asana again.
+      const mode = body.mode === "continue" || body.mode === "retry-failed" ? body.mode : "new";
+      let resumeFrom: Date | null = null;
+      if (mode === "continue") {
+        const k = (await opts.repo.listAsanaProjects()).find((x) => x.project_gid === projectGid);
+        const u = k ? await unfinishedCheck(k) : null;
+        if (!u) return { started: false, reason: "there is no stopped check of this month to continue" };
+        resumeFrom = u.startedAt;
+        select = u.select;
+      }
 
       const claimed = await opts.repo.tryStartAsanaRun(projectGid, displayName);
       if (!claimed) return { started: false, reason: "already running" };
+      // A new full check replaces any unfinished one; continuing keeps the original start; a retry leaves it alone.
+      if (mode === "new") await opts.repo.startCheck(projectGid, select ? JSON.stringify(select) : null);
 
       const runner = opts.monthRunner;
       const actor = actorOf(req);
@@ -394,7 +442,8 @@ export function createApp(opts: {
       const live: LiveRun = { kind: "check", progress: null, cancelRequested: false };
       liveRuns.set(projectGid, live);
       const scope = [
-        select ? `the ${select.from} ${plural(select.count, "review")}` : "",
+        mode === "continue" ? "continuing where the last check stopped" : mode === "retry-failed" ? "only the reviews that could not be checked" : "",
+        select && mode !== "retry-failed" ? `the ${select.from} ${plural(select.count, "review")}` : "",
         maxReviews !== undefined ? (maxReviews === 0 ? "looking through every Google review per location" : `looking through the newest ${plural(maxReviews, "Google review")} per location`) : "",
       ].filter(Boolean);
       await audit(actor, "run.started", `Started a check of ${month}${scope.length ? ` (${scope.join(", ")})` : ""}`);
@@ -425,9 +474,12 @@ export function createApp(opts: {
             retireAfterRun: projectGid !== runner.asanaSettings.projectGid,
             onState: (p) => (live.progress = p),
             isCancelled: () => live.cancelRequested,
-            select,
+            select: mode === "retry-failed" ? undefined : select,
+            useStored: mode !== "new",
+            only: resumeFrom ? notCheckedSince(resumeFrom) : mode === "retry-failed" ? checkFailed : undefined,
             skipSyncIfSyncedWithinMs: body.forceSync === true ? 0 : (runner.syncFreshMinutes?.() ?? 0) * 60_000,
           });
+          if (!result.cancelled && result.checkedGoogle && mode !== "retry-failed") await opts.repo.clearCheck(projectGid);
           await opts.repo.finishAsanaRun(projectGid, result.cancelled ? { ok: false, error: CANCELLED } : { ok: true, reviewCount: result.reviewsFound, synced: result.synced });
           const counts = `${result.synced ? "synced from Asana first; " : "used the recent Asana sync; "}${plural(result.checked, "review")} checked, ${result.removed.toLocaleString("en-US")} removed, ${result.unknown.toLocaleString("en-US")} could not be checked`;
           if (result.cancelled) await audit(actor, "run.cancelled", `Check of ${month} cancelled part-way: ${counts}${result.notified ? "; removal alert sent" : ""}`);
@@ -479,7 +531,13 @@ export function createApp(opts: {
             removalRecheckDelayMs: 0,
             retireAfterRun: false,
             onState: (p) => (live.progress = p),
+            isCancelled: () => live.cancelRequested,
           });
+          if (result.cancelled) {
+            await opts.repo.finishAsanaRun(projectGid, { ok: false, error: CANCELLED });
+            await audit(actor, "sync.cancelled", `Sync of ${month} from Asana cancelled; nothing was saved`);
+            return;
+          }
           await opts.repo.finishAsanaRun(projectGid, { ok: true, reviewCount: result.reviewsFound });
           await audit(actor, "sync.finished", `Synced ${month} from Asana: ${plural(result.reviewsFound, "review")} across ${plural(result.tasksScanned, "task")} scanned`);
         } catch (e) {

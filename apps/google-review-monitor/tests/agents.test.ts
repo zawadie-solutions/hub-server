@@ -69,6 +69,14 @@ describe("which agent a removed review belongs to", () => {
     expect([...grouped.keys()]).toEqual([jessica]);
     expect(grouped.get(jessica)?.map((r) => r.id)).toEqual([rows[0].id, rows[2].id]);
   });
+
+  it("gives every agent the unassigned reviews, after their own", () => {
+    const rows = [row({ id: 1 }), row({ id: 2, assignee_name: "Jessica Kabemba" }), row({ id: 3, assignee_name: "Joseph Mukele" })];
+    const grouped = reviewsByAgent(agents, rows);
+    expect(grouped.size).toBe(agents.length);
+    expect(grouped.get(jessica)?.map((r) => r.id)).toEqual([2, 1]);
+    for (const a of agents.filter((a) => a !== jessica)) expect(grouped.get(a)?.map((r) => r.id)).toEqual([1]);
+  });
 });
 
 describe("SlackDmNotifier.notifyAgents", () => {
@@ -140,5 +148,15 @@ describe("SlackDmNotifier.notifyAgents", () => {
     const n = new SlackDmNotifier({ botToken: "xoxb", recipientUserIds: ["U07TGUZ7563"] }, fetchImpl);
     expect(await n.notifyAgents([row({ assignee_name: "Jessica Kabemba" })], buildRemovalMessage)).toEqual([]);
     expect(dms).toEqual([]);
+  });
+
+  it("sends the unassigned reviews to every agent, under their own heading", async () => {
+    const { dms, fetchImpl } = slack(users);
+    const n = new SlackDmNotifier({ botToken: "xoxb", recipientUserIds: ["U07TGUZ7563"], agentUserIds: ids }, fetchImpl);
+    await n.notifyAgents([row({ reviewer_name: "Nobody's" }), row({ reviewer_name: "Jess's", assignee_name: "Jessica Kabemba" })], buildRemovalMessage);
+    expect(dms.map((d) => d.channel).sort()).toEqual([...ids].sort());
+    for (const d of dms) expect(d.text).toContain("Not assigned in Asana (1 review)\n\nLocation:");
+    expect(dms.find((d) => d.channel === "U08EADMUCRJ")!.text).toContain("Reviewer: Jess's");
+    expect(dms.find((d) => d.channel === "U0746D7PGJX")!.text).not.toContain("Reviewer: Jess's");
   });
 });

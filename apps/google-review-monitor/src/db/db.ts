@@ -89,6 +89,8 @@ const ADDED_COLUMNS: [table: string, column: string, type: string][] = [
   ["reviews", "asana_tagged_removed", "TINYINT(1) NOT NULL DEFAULT 0"],
   ["reviews", "assignee_email", "VARCHAR(255)"],
   ["reviews", "location_assignee_email", "VARCHAR(255)"],
+  ["asana_month_projects", "check_started_at", "DATETIME(3)"],
+  ["asana_month_projects", "check_select", "VARCHAR(64)"],
 ];
 
 async function ensureColumn(db: Db, table: string, column: string, type: string): Promise<void> {

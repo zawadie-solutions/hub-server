@@ -1,6 +1,6 @@
 import type { AsanaClient } from "../asana/client";
 import type { AsanaSettings, WalkProgress } from "../asana/sync";
-import { syncAsana } from "../asana/sync";
+import { SyncCancelled, syncAsana } from "../asana/sync";
 import type { ReviewRepo } from "../db/repo";
 import { notifyPending } from "../notify/service";
 import type { Notifier, ReviewChecker, ReviewRow } from "../types";
@@ -43,6 +43,20 @@ export function selectForRun<T extends { location: string | null }>(rows: T[], s
   const picked = ordered.slice(0, n);
   return select.from === "first" ? picked : picked.reverse();
 }
+
+/** Run order: one location at a time, alphabetically (no-location reviews last), then by id. */
+export function runOrder<T extends { location: string | null; id: number }>(rows: T[]): T[] {
+  return [...rows].sort(
+    (a, b) => Number(a.location === null) - Number(b.location === null) || (a.location ?? "").localeCompare(b.location ?? "") || a.id - b.id,
+  );
+}
+
+/** True when the review has not been checked since `since` (a run that stopped had not reached it yet). */
+export const notCheckedSince = (since: Date) => (r: { last_checked_at: Date | string | null }) =>
+  !r.last_checked_at || new Date(r.last_checked_at).getTime() < new Date(since).getTime();
+
+/** True when the last check of the review could not tell whether it is still on Google. */
+export const checkFailed = (r: { status: string; last_checked_at: Date | string | null }) => r.status === "UNKNOWN" && !!r.last_checked_at;
 
 /** Where a run is, for the dashboard's live progress display. */
 export interface RunProgress {
@@ -92,6 +106,10 @@ export async function runMonthCheck(opts: {
   select?: RunSelection;
   /** Skip the Asana sync when this month was last synced less than this long ago. Default: always sync. */
   skipSyncIfSyncedWithinMs?: number;
+  /** Use the month's stored reviews without syncing (continuing a stopped run, retrying failed checks). Syncs if none are stored. */
+  useStored?: boolean;
+  /** After `select`, check only the reviews this returns true for (e.g. those a stopped run had not reached). */
+  only?: (r: ReviewRow) => boolean;
 }): Promise<RunMonthResult> {
   const log = opts.onProgress ?? (() => {});
   const state: RunProgress = { phase: "syncing", location: null, doneLocations: [], totalLocations: 0, reviewsDone: 0, reviewsTotal: 0, syncedMinutesAgo: null, sync: null };
@@ -100,7 +118,14 @@ export async function runMonthCheck(opts: {
 
   // A month synced recently enough is not read from Asana again: its stored reviews are used as they are.
   let stored: ReviewRow[] | null = null;
-  if (opts.skipSyncIfSyncedWithinMs && opts.skipSyncIfSyncedWithinMs > 0) {
+  if (opts.useStored) {
+    const rows = await opts.repo.reviewsByProject(opts.projectGid);
+    if (rows.length) {
+      stored = rows;
+      const last = (await opts.repo.listAsanaProjects()).find((p) => p.project_gid === opts.projectGid)?.last_synced_at;
+      state.syncedMinutesAgo = last ? Math.max(0, Math.floor((Date.now() - new Date(last).getTime()) / 60_000)) : 0;
+    }
+  } else if (opts.skipSyncIfSyncedWithinMs && opts.skipSyncIfSyncedWithinMs > 0) {
     const last = (await opts.repo.listAsanaProjects()).find((p) => p.project_gid === opts.projectGid)?.last_synced_at;
     const age = last ? Date.now() - new Date(last).getTime() : Number.POSITIVE_INFINITY;
     if (age >= 0 && age < opts.skipSyncIfSyncedWithinMs) {
@@ -118,7 +143,10 @@ export async function runMonthCheck(opts: {
     log("Syncing...");
     // Asana answers in bursts, so the dashboard is told at most twice a second.
     let lastEmit = 0;
-    const fresh = await syncAsana(opts.client, opts.repo, { ...opts.asanaSettings, projectGid: opts.projectGid }, {
+    let fresh;
+    try {
+      fresh = await syncAsana(opts.client, opts.repo, { ...opts.asanaSettings, projectGid: opts.projectGid }, {
+      isCancelled: opts.isCancelled,
       onProgress: (p) => {
         state.sync = p;
         const now = Date.now();
@@ -128,6 +156,12 @@ export async function runMonthCheck(opts: {
         }
       },
     });
+    } catch (e) {
+      // Stopped part-way through reading Asana: nothing was written, and the month stays not synced.
+      if (!(e instanceof SyncCancelled)) throw e;
+      log("Sync cancelled; nothing was saved.");
+      return { tasksScanned: 0, reviewsFound: 0, checked: 0, removed: 0, unknown: 0, checkedGoogle: false, notified: false, cancelled: true, synced: false };
+    }
     log(`Synced ${fresh.reviewsFound} review tasks (${fresh.created} new).`);
     sync = fresh;
     await opts.repo.markSynced(opts.projectGid);
@@ -136,12 +170,11 @@ export async function runMonthCheck(opts: {
   const didSync = state.syncedMinutesAgo === null;
 
   // One location at a time, alphabetically (no-location reviews last), so progress reads top to bottom.
-  const synced = stored.sort(
-    (a, b) => Number(a.location === null) - Number(b.location === null) || (a.location ?? "").localeCompare(b.location ?? "") || a.id - b.id,
-  );
+  const synced = runOrder(stored);
   const touchedIds = synced.map((r) => r.id);
-  const rows = selectForRun(synced, opts.select);
-  if (rows.length < synced.length) log(`Checking ${rows.length} of the ${synced.length} reviews (${opts.select?.from} ${opts.select?.count}).`);
+  const selected = selectForRun(synced, opts.select);
+  const rows = opts.only ? selected.filter(opts.only) : selected;
+  if (rows.length < synced.length) log(`Checking ${rows.length} of the ${synced.length} reviews.`);
 
   if (!opts.checker) {
     if (opts.retireAfterRun) await opts.repo.setMonitoringActive(touchedIds, false);
