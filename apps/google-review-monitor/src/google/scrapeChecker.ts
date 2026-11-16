@@ -14,7 +14,10 @@ import type { CheckResult, ReviewChecker, ReviewToCheck } from "../types";
  *
  * How a verdict is reached (every doubt => UNKNOWN):
  *  - REVIEW_REMOVED only when the page says "This review is no longer available".
- *  - REVIEW_EXISTS when the review itself is on the page (its reviewer's name, or a review card).
+ *  - REVIEW_EXISTS when the review itself is on the page: its reviewer's name next to a review
+ *    date, or a review card (date + Share) on Google's single-review view. A review link opens
+ *    that one review, so the card there is the review even when Google shows a different name
+ *    than Asana has (renamed profile, name typed wrong in Asana) — that mismatch is only logged.
  *  - Anything else — a consent/"unusual traffic" page, a timeout, a page showing neither — is
  *    UNKNOWN.
  *
@@ -34,16 +37,47 @@ const BLOCKED_PAGES = [/before you continue to google/i, /unusual traffic from y
 /** A review card's relative date, e.g. "a year ago", "2 weeks ago". */
 const REVIEW_AGE = /\b(?:a|an|\d+)\s+(?:minute|hour|day|week|month|year)s?\s+ago\b/i;
 
+/**
+ * The parts of a reviewer's name worth looking for: every word of two or more letters, so
+ * "K HENRY" is found by "HENRY" and "Jeremy S." by "Jeremy".
+ */
+export function nameParts(reviewerName: string | null): string[] {
+  return (reviewerName ?? "")
+    .split(/\s+/)
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
+    .filter((w) => [...w].length >= 2);
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Whether the page shows the reviewer's name: any of its parts as a whole word, any case. */
+function showsName(text: string, parts: string[]): boolean {
+  return parts.some((p) => new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(p)}(?![\\p{L}\\p{N}])`, "iu").test(text));
+}
+
+/**
+ * Whether Google opened its single-review view (the page a review link leads to), rather than a
+ * place's overview or review list, where a review card could be anyone's.
+ */
+function isSingleReviewView(text: string, finalUrl: string | null): boolean {
+  if (finalUrl && /\/maps\/reviews\//.test(finalUrl)) return true;
+  return /\bPLACE DETAILS\b/.test(text);
+}
+
 /** What the rendered page says about the review. Pure, so it can be tested without the API. */
-export function classifyPage(pageText: string, reviewerName: string | null): CheckResult {
+export function classifyPage(pageText: string, reviewerName: string | null, finalUrl: string | null = null): CheckResult {
   const text = pageText.replace(/\s+/g, " ");
   if (text.toLowerCase().includes(REMOVED_TEXT)) return { status: "REVIEW_REMOVED" };
   if (BLOCKED_PAGES.some((re) => re.test(text))) return { status: "UNKNOWN", reason: `${SOURCE_FAILED} Google showed a consent or "unusual traffic" page instead of the review` };
-  const firstName = reviewerName?.trim().split(/\s+/)[0];
-  if (firstName && firstName.length >= 2 && text.toLowerCase().includes(firstName.toLowerCase()) && REVIEW_AGE.test(text)) return { status: "REVIEW_EXISTS" };
-  // Reviewer unknown: a review card is its date plus the Share button ("Like" turns into the
-  // like count once a review has likes, so it can't be relied on).
-  if (!firstName && REVIEW_AGE.test(text) && /\bShare\b/.test(text)) return { status: "REVIEW_EXISTS" };
+  const dated = REVIEW_AGE.test(text);
+  const parts = nameParts(reviewerName);
+  if (parts.length && dated && showsName(text, parts)) return { status: "REVIEW_EXISTS" };
+  // A review card is its date plus the Share button ("Like" turns into the like count once a
+  // review has likes, so it can't be relied on).
+  const card = dated && /\bShare\b/.test(text);
+  if (card && !parts.length) return { status: "REVIEW_EXISTS" };
+  // The name Asana has isn't on the page, but this is the one review the link leads to.
+  if (card && isSingleReviewView(text, finalUrl)) return { status: "REVIEW_EXISTS" };
   return { status: "UNKNOWN", reason: "scrape: the page showed neither the review nor Google's removal message" };
 }
 
@@ -56,7 +90,7 @@ export interface ScrapeOptions {
   fetchImpl?: typeof fetch;
 }
 
-type PageRead = { text: string } | { failed: string };
+type PageRead = { text: string; finalUrl: string | null } | { failed: string };
 
 export class ScrapeChecker implements ReviewChecker {
   constructor(private opts: ScrapeOptions) {}
@@ -64,8 +98,11 @@ export class ScrapeChecker implements ReviewChecker {
   async checkReview(review: ReviewToCheck): Promise<CheckResult> {
     const read = await this.render(review.googleReviewUrl);
     if ("failed" in read) return { status: "UNKNOWN", reason: `${SOURCE_FAILED} ${read.failed}` };
-    const result = classifyPage(read.text, review.reviewerName);
-    logger.info({ reviewId: review.id, status: result.status }, "scrape check");
+    const result = classifyPage(read.text, review.reviewerName, read.finalUrl);
+    const parts = nameParts(review.reviewerName);
+    // Found by its card alone: worth knowing, since Asana's reviewer name may be wrong.
+    const nameMismatch = result.status === "REVIEW_EXISTS" && parts.length > 0 && !showsName(read.text.replace(/\s+/g, " "), parts);
+    logger.info({ reviewId: review.id, status: result.status, ...(nameMismatch ? { nameMismatch: review.reviewerName } : {}) }, "scrape check");
     return result;
   }
 
@@ -85,10 +122,10 @@ export class ScrapeChecker implements ReviewChecker {
       const err = e as Error;
       return { failed: err.name === "TimeoutError" ? "the scraper API did not answer in time" : `could not reach the scraper API (${err.message})` };
     }
-    const body = (await res.json().catch(() => null)) as { text?: unknown; error?: unknown } | null;
+    const body = (await res.json().catch(() => null)) as { text?: unknown; finalUrl?: unknown; error?: unknown } | null;
     if (!res.ok) return { failed: `the scraper API answered HTTP ${res.status}${typeof body?.error === "string" ? ` (${body.error})` : ""}` };
     if (typeof body?.text !== "string") return { failed: "the scraper API's answer had no page text" };
-    return { text: body.text };
+    return { text: body.text, finalUrl: typeof body.finalUrl === "string" ? body.finalUrl : null };
   }
 }
 
