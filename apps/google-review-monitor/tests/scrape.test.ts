@@ -47,8 +47,46 @@ Response from the owner 8 years ago`;
     expect(classifyPage(liked, "Jeremy S.")).toEqual({ status: "REVIEW_EXISTS" });
   });
 
-  it("does not take someone else's review as this one", () => {
-    expect(classifyPage(EXISTING, "Gabe Chapman").status).toBe("UNKNOWN");
+  it("finds a reviewer whose first name is a single letter", () => {
+    const henry = EXISTING.replace("Stephanie Rivera", "K HENRY");
+    expect(classifyPage(henry, "K HENRY")).toEqual({ status: "REVIEW_EXISTS" });
+    expect(classifyPage(henry, "k. henry")).toEqual({ status: "REVIEW_EXISTS" });
+  });
+
+  it("matches name parts as whole words only", () => {
+    // "Al" must not be found inside "Alec's" — but the single-review card still counts.
+    const page = `Search Google Maps\nAlec's Truck Trailer & RV\nTruck accessories store\nReviews\nSomeone Else\n2 years ago\nFine\nShare`;
+    expect(classifyPage(page, "Al B").status).toBe("UNKNOWN");
+  });
+
+  // What Google really showed for two links whose Asana reviewer name differs from Google's.
+  const RENAMED = `Action Auto Recycling
+Used auto parts store
+Hillside
+PLACE DETAILS
+PLATINUM AUTOPLEX
+6 years ago
+Greedy people, this is the most ridiculous place to buy parts from
+Like
+Share
+Response from the owner 6 years ago`;
+
+  it("takes the review card on a review link's own page even when Asana has another name", () => {
+    expect(classifyPage(RENAMED, "JUACHI MGBORUKWE")).toEqual({ status: "REVIEW_EXISTS" });
+    expect(classifyPage(RENAMED, "Administrator")).toEqual({ status: "REVIEW_EXISTS" });
+    // Known by the final URL alone, when the page text has no "PLACE DETAILS" heading.
+    const noHeading = RENAMED.replace("PLACE DETAILS\n", "");
+    expect(classifyPage(noHeading, "Administrator", "https://www.google.com/maps/reviews/@25.6,-80.3,17z/data=!4m6")).toEqual({ status: "REVIEW_EXISTS" });
+  });
+
+  it("does not take someone else's review as this one outside the single-review view", () => {
+    const placeList = RENAMED.replace("PLACE DETAILS\n", "Overview\nReviews\nAbout\n");
+    expect(classifyPage(placeList, "Gabe Chapman").status).toBe("UNKNOWN");
+    expect(classifyPage(placeList, "Gabe Chapman", "https://www.google.com/maps/place/Action+Auto/@32.7,-97.3").status).toBe("UNKNOWN");
+  });
+
+  it("does not call a review existing from a page that has not loaded yet", () => {
+    expect(classifyPage("Search Google Maps\nSaved\nRecents\nGet app", "Kevin", "https://www.google.com/maps/reviews/data=!4m8").status).toBe("UNKNOWN");
   });
 
   it("treats a consent or unusual-traffic page as a failed source, not a verdict", () => {
@@ -118,6 +156,14 @@ describe("scrape mode via the scraper API", () => {
     const api = fakeApi((init) => new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(init.signal!.reason))));
     const result = await remote(api.fetchImpl, 50).checkReview(review);
     expect(result.status === "UNKNOWN" && result.reason).toBe("google check failed: the scraper API did not answer in time");
+  });
+
+  it("uses the API's final URL to recognise a review link's own page", async () => {
+    const page = EXISTING.replace("PLACE DETAILS\n", "").replace("Stephanie Rivera", "Ernesto Gonzalez");
+    const single = fakeApi(() => json(200, { finalUrl: "https://www.google.com/maps/reviews/@1,2,17z/data=x", text: page }));
+    expect(await remote(single.fetchImpl).checkReview(review)).toEqual({ status: "REVIEW_EXISTS" });
+    const place = fakeApi(() => json(200, { finalUrl: "https://www.google.com/maps/place/x", text: page }));
+    expect((await remote(place.fetchImpl).checkReview(review)).status).toBe("UNKNOWN");
   });
 
   it("refuses an answer without page text", async () => {
