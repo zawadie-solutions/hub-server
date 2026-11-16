@@ -79,6 +79,21 @@ Response from the owner 6 years ago`;
     expect(classifyPage(noHeading, "Administrator", "https://www.google.com/maps/reviews/@25.6,-80.3,17z/data=!4m6")).toEqual({ status: "REVIEW_EXISTS" });
   });
 
+  it("takes a star-only rating (no text, no Like/Share) on a review link's own page", () => {
+    // What Google showed for a 1-star rating with no text; Asana had another name for it.
+    const starOnly = `Search Google Maps
+PEDRAM LAW, PC
+Personal injury attorney
+PLACE DETAILS
+Posche Co. Hauling
+10 months ago`;
+    expect(classifyPage(starOnly, "Grant F")).toEqual({ status: "REVIEW_EXISTS" });
+    const noHeading = starOnly.replace("PLACE DETAILS\n", "");
+    expect(classifyPage(noHeading, "Grant F", "https://www.google.com/maps/reviews/@34.06,-118.37,781m/data=!3m2")).toEqual({ status: "REVIEW_EXISTS" });
+    // Outside the single-review view a bare date proves nothing.
+    expect(classifyPage(noHeading, "Grant F", "https://www.google.com/maps/place/PEDRAM+LAW").status).toBe("UNKNOWN");
+  });
+
   it("does not take someone else's review as this one outside the single-review view", () => {
     const placeList = RENAMED.replace("PLACE DETAILS\n", "Overview\nReviews\nAbout\n");
     expect(classifyPage(placeList, "Gabe Chapman").status).toBe("UNKNOWN");
