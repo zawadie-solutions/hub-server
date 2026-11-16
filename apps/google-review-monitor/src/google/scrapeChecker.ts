@@ -15,9 +15,10 @@ import type { CheckResult, ReviewChecker, ReviewToCheck } from "../types";
  * How a verdict is reached (every doubt => UNKNOWN):
  *  - REVIEW_REMOVED only when the page says "This review is no longer available".
  *  - REVIEW_EXISTS when the review itself is on the page: its reviewer's name next to a review
- *    date, or a review card (date + Share) on Google's single-review view. A review link opens
- *    that one review, so the card there is the review even when Google shows a different name
- *    than Asana has (renamed profile, name typed wrong in Asana) — that mismatch is only logged.
+ *    date, or a review date on Google's single-review view. A review link opens that one review,
+ *    so the date there is the review's even when Google shows a different name than Asana has
+ *    (renamed profile, name typed wrong in Asana) — that mismatch is only logged — and even for
+ *    a star-only rating, which has no text and no Like/Share buttons.
  *  - Anything else — a consent/"unusual traffic" page, a timeout, a page showing neither — is
  *    UNKNOWN.
  *
@@ -76,8 +77,10 @@ export function classifyPage(pageText: string, reviewerName: string | null, fina
   // review has likes, so it can't be relied on).
   const card = dated && /\bShare\b/.test(text);
   if (card && !parts.length) return { status: "REVIEW_EXISTS" };
-  // The name Asana has isn't on the page, but this is the one review the link leads to.
-  if (card && isSingleReviewView(text, finalUrl)) return { status: "REVIEW_EXISTS" };
+  // The name Asana has isn't on the page, but this is the one review the link leads to. Only
+  // its date is needed: a star-only rating shows no Share button. (A page still loading has no
+  // date yet, so it stays UNKNOWN.)
+  if (dated && isSingleReviewView(text, finalUrl)) return { status: "REVIEW_EXISTS" };
   return { status: "UNKNOWN", reason: "scrape: the page showed neither the review nor Google's removal message" };
 }
 
