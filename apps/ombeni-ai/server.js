@@ -8,6 +8,19 @@ const { verifyHubUser, nameFromEmail } = require('./services/hubTrust');
 const app = express();
 const PORT = env.PORT;
 
+// Slack buttons and thread replies (see services/slackHooks.js). Inside the hub
+// they arrive at /hooks/ombeni-ai/<name>, outside its login; standalone, at
+// /hooks/<name>. Raw body, before the JSON parser, for Slack's signature check.
+const slackHooks = require('./services/slackHooks');
+app.publicHooks = { 'slack-events': slackHooks.events, 'slack-interactions': slackHooks.interactions };
+if (!env.IN_HUB) {
+  app.post('/hooks/:hook', express.raw({ type: '*/*', limit: '1mb' }), (req, res, next) => {
+    const hook = Object.prototype.hasOwnProperty.call(app.publicHooks, req.params.hook) ? app.publicHooks[req.params.hook] : null;
+    if (!hook) return res.status(404).send('Not found');
+    Promise.resolve(hook(req, res)).catch(next);
+  });
+}
+
 app.use(express.json());
 
 // This app's per-user state (who's signed in here, Google Calendar tokens) lives on
@@ -58,6 +71,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/auth', require('./routes/auth'));
 app.use('/api', require('./routes/api'));
+
+// Every refresh also writes success statements for new meetings and sends
+// them to the people they're for.
+store.onMeetingsRefreshed(meetings => require('./services/statementService').processNewMeetings(meetings));
+
+// Morning messages and notes before meetings, for everyone who connected Google.
+require('./services/coworker').start();
 
 store.refreshMeetings()
   .then(() => console.log(store.isUsingNotetaker() ? '✅ Loaded real meetings from Monday Notetaker' : 'ℹ️ Monday not configured — using demo meeting data'))

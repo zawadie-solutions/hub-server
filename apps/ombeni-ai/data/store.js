@@ -1,8 +1,5 @@
 const seedMeetings = require('./meetings');
 const notetakerService = require('../services/notetakerService');
-const mondayService = require('../services/mondayService');
-const adminBoards = require('./adminBoards');
-const syncedActionItems = require('./syncedActionItems');
 
 // In-memory application state. Swap this out for a real database once the
 // app needs to persist across restarts / multiple instances.
@@ -15,6 +12,9 @@ let meetings = seedMeetings.map(m => ({
   ...m,
   source: 'demo',
   participants: [],       // demo meetings have names, not emails, so nothing to authorize against
+  kind: 'company',
+  externalDomains: [],
+  transcriptEntries: [],
   mondayLink: null,
   durationMinutes: null,
   analysis: null,          // { summary, keyPoints, decisions, actionItems, unresolved } — set by /analyze
@@ -27,81 +27,13 @@ const activityLog = [];
 
 let activitySeq = 1;
 
-// Pushes a meeting's not-yet-completed, not-yet-synced action items to
-// Monday.com as tasks — this is what makes task creation automatic instead
-// of requiring someone to open the meeting and click a button. Safe to call
-// repeatedly on the same meeting: syncedActionItems persists which items
-// already made it to Monday, so re-running this on every refresh only ever
-// pushes what's actually new (and retries ones that failed, e.g. because
-// Monday wasn't configured yet at the time).
-const actionItemKey = (meeting, item) => `${meeting.id}::${item.id || item.task}`;
+// Called with the fresh meeting list after every refresh (see
+// services/statementService.js, which writes success statements for new
+// meetings). Listeners run in the background: a refresh never waits on them.
+const refreshListeners = [];
 
-async function syncActionItemsToMonday(meeting) {
-  const items = meeting.analysis && meeting.analysis.actionItems;
-  if (!Array.isArray(items)) return;
-
-  for (const item of items) {
-    if (item.completed) continue;
-    const key = actionItemKey(meeting, item);
-    if (await syncedActionItems.has(key)) continue;
-
-    const mondayResult = await mondayService.createTask({
-      task: item.task,
-      owner: item.owner,
-      due: item.due,
-      project: meeting.project,
-      priority: item.priority,
-      boardId: await adminBoards.boardForOwner(item.owner)
-    });
-    item.mondayResult = mondayResult;
-
-    if (mondayResult.created) {
-      await syncedActionItems.markSynced(key);
-      logActivity({
-        action: `Created task "${item.task}" in Monday.com from "${meeting.title}"`,
-        source: 'Monday.com'
-      });
-    }
-  }
-}
-
-// Fire-and-forget: pushes every given meeting's action items to Monday, one
-// meeting at a time. Deliberately NOT awaited by refreshMeetings() below —
-// callers (including server.js at startup) need the meeting list back
-// quickly, and shouldn't be stuck waiting on a potentially long chain of
-// Monday API calls (one create_item mutation per unsynced action item) just
-// to get it.
-//
-// Only one runs at a time, because two overlapping refreshes could otherwise
-// both see an item as new and create it twice. The next refresh picks up
-// anything this one skipped.
-let syncAllRunning = false;
-
-async function syncAllActionItems(meetingsList) {
-  if (syncAllRunning) return;
-  syncAllRunning = true;
-  try {
-    // An empty list may just mean Monday couldn't be reached, so it doesn't
-    // count as having seen the existing meetings.
-    if (meetingsList.length > 0 && await syncedActionItems.needsBaseline()) {
-      const existingKeys = meetingsList.flatMap(meeting =>
-        ((meeting.analysis && meeting.analysis.actionItems) || []).map(item => actionItemKey(meeting, item))
-      );
-      await syncedActionItems.recordBaseline(existingKeys);
-      logActivity({ action: `Recorded ${existingKeys.length} existing action item(s) as already handled`, source: 'Monday.com' });
-      return;
-    }
-
-    for (const meeting of meetingsList) {
-      try {
-        await syncActionItemsToMonday(meeting);
-      } catch (err) {
-        console.error(`⚠️ Failed to sync action items for meeting "${meeting.title}":`, err.message);
-      }
-    }
-  } finally {
-    syncAllRunning = false;
-  }
+function onMeetingsRefreshed(listener) {
+  refreshListeners.push(listener);
 }
 
 async function refreshMeetings() {
@@ -110,7 +42,9 @@ async function refreshMeetings() {
   usingNotetaker = true;
   lastRefreshedAt = Date.now();
 
-  syncAllActionItems(meetings).catch(err => console.error('⚠️ Monday action-item sync failed:', err.message));
+  for (const listener of refreshListeners) {
+    Promise.resolve(listener(meetings)).catch(err => console.error('⚠️ Meeting refresh listener failed:', err.message));
+  }
 
   return meetings;
 }
@@ -144,12 +78,12 @@ function getMeeting(id) {
   return meetings.find(m => m.id === id);
 }
 
-// A meeting with no known participant emails (demo data, or a Notetaker
-// meeting Monday didn't return attendee emails for) is treated as open —
-// there's nothing real to restrict. Otherwise only listed participants
-// (by email, case-insensitive) are authorized.
+// Only listed participants (by email, case-insensitive) may see a meeting. A
+// real recording Monday returned no attendee emails for belongs to nobody we
+// can name, so nobody sees it; only the fictional demo meetings (standalone,
+// no Monday) have no attendees and are open.
 function isAuthorizedForMeeting(meeting, email) {
-  if (!meeting.participants || meeting.participants.length === 0) return true;
+  if (!meeting.participants || meeting.participants.length === 0) return meeting.source === 'demo';
   if (!email) return false;
   return meeting.participants.includes(email.toLowerCase());
 }
@@ -197,7 +131,7 @@ module.exports = {
   isAuthorizedForMeeting,
   deleteMeetings,
   setMeetingAnalysis,
-  syncActionItemsToMonday,
+  onMeetingsRefreshed,
   logActivity,
   getActivity
 };

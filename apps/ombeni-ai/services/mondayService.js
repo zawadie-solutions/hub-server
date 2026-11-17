@@ -94,18 +94,26 @@ async function getOrCreateTaskGroup(boardId) {
   return groupCache;
 }
 
-// Workspace user directory, for resolving an action item's free-text owner
-// name (e.g. "David Mensah") to a real Monday user id — needed because the
-// people column rejects plain text. Cached for the same reason columns are:
-// this is called once per task creation, and the directory doesn't change
-// within a server's lifetime often enough to justify a fresh fetch every time.
+// Workspace user directory, for resolving an action item's owner to a real
+// Monday user id (the people column rejects plain text), and for matching the
+// names said in a meeting to Zawadie email addresses. Refetched hourly so a
+// new hire shows up without a restart.
+const USERS_TTL_MS = 60 * 60 * 1000;
 let usersCache = null;
+let usersCachedAt = 0;
 
 async function getUsers() {
-  if (usersCache) return usersCache;
+  if (usersCache && Date.now() - usersCachedAt < USERS_TTL_MS) return usersCache;
   const data = await mondayRequest(`query { users (kind: all) { id name email } }`, {});
   usersCache = data.users || [];
+  usersCachedAt = Date.now();
   return usersCache;
+}
+
+// [{ id, name, email }] for everyone in the Monday account.
+async function listPeople() {
+  if (!env.MONDAY_API_KEY) return [];
+  return getUsers();
 }
 
 function findUserByName(users, name) {
@@ -197,7 +205,7 @@ async function attachFileToItem(itemId, columnId, file) {
  * labels. `file`, if given, is { buffer, filename, mimetype }. `boardId`, if
  * given, is an admin's own board; otherwise the task goes to the shared one.
  */
-async function createTask({ task, owner, due, project, priority, status, file, boardId: chosenBoardId }) {
+async function createTask({ task, owner, ownerEmail, due, project, priority, status, file, boardId: chosenBoardId }) {
   const boardId = chosenBoardId || getBoardId();
   if (!env.MONDAY_API_KEY || !boardId) {
     return { created: false, reason: 'not_configured' };
@@ -241,9 +249,10 @@ async function createTask({ task, owner, due, project, priority, status, file, b
     // the name in the item title instead of silently dropping it.
     const ownerColumn = findColumn(columns, { types: ['people', 'multiple-person'], titleRegex: /owner|assignee|person/i });
     let ownerAssigned = false;
-    if (ownerColumn && owner) {
+    if (ownerColumn && (owner || ownerEmail)) {
       const users = await getUsers();
-      const matchedUser = findUserByName(users, owner);
+      const email = String(ownerEmail || '').toLowerCase();
+      const matchedUser = (email && users.find(u => (u.email || '').toLowerCase() === email)) || findUserByName(users, owner);
       if (matchedUser) {
         columnValues[ownerColumn.id] = { personsAndTeams: [{ id: Number(matchedUser.id), kind: 'person' }] };
         ownerAssigned = true;
@@ -296,4 +305,55 @@ async function listBoards() {
   return data.boards || [];
 }
 
-module.exports = { isConfigured, createTask, getBoardId, listBoards };
+// Every regular board the shared Monday account can see, with who subscribes
+// to it. Slow (several seconds), so kept for 10 minutes.
+const BOARDS_TTL_MS = 10 * 60 * 1000;
+let boardsCache = null;
+let boardsCachedAt = 0;
+
+async function boardsWithSubscribers() {
+  if (boardsCache && Date.now() - boardsCachedAt < BOARDS_TTL_MS) return boardsCache;
+  const data = await mondayRequest(
+    `query { boards (limit: 500, state: active) { id name type workspace { name } subscribers { email } } }`,
+    {}
+  );
+  boardsCache = (data.boards || [])
+    .filter(b => b.type === 'board')
+    .map(b => ({
+      id: String(b.id),
+      name: b.name,
+      workspace: b.workspace ? b.workspace.name : null,
+      subscribers: (b.subscribers || []).map(u => (u.email || '').toLowerCase())
+    }));
+  boardsCachedAt = Date.now();
+  return boardsCache;
+}
+
+// The boards a person can send tasks to: for now, the ones they're a member
+// (subscriber) of, as seen through the shared Monday account. This is the
+// stand-in until each person connects their own Monday account, which will
+// show exactly the boards they can open.
+async function listBoardsFor(email) {
+  if (!env.MONDAY_API_KEY) return [];
+  const who = String(email || '').toLowerCase();
+  return (await boardsWithSubscribers())
+    .filter(b => b.subscribers.includes(who))
+    .map(({ id, name, workspace }) => ({ id, name, workspace }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Adds a comment ("update") to an item, e.g. the full success statement.
+// Monday renders update bodies as HTML, so plain text is escaped and its line
+// breaks kept.
+async function addUpdate(itemId, text) {
+  const body = String(text)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>');
+  const data = await mondayRequest(
+    `mutation ($itemId: ID!, $body: String!) { create_update (item_id: $itemId, body: $body) { id } }`,
+    { itemId: String(itemId), body }
+  );
+  return data.create_update;
+}
+
+module.exports = { isConfigured, createTask, getBoardId, listBoards, listPeople, listBoardsFor, addUpdate };

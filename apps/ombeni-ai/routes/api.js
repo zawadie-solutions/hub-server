@@ -8,7 +8,10 @@ const knowledgeStore = require('../data/knowledgeStore');
 const systemInstructions = require('../data/systemInstructions');
 const admins = require('../data/admins');
 const adminBoards = require('../data/adminBoards');
-const { processMeetingAnalysis, handleChat } = require('../services/openaiService');
+const { processMeetingAnalysis, handleChat, writeRecapEmail } = require('../services/openaiService');
+const gmailService = require('../services/gmailService');
+const workStore = require('../data/workStore');
+const { isCompanyEmail } = require('../services/meetingKind');
 const mondayService = require('../services/mondayService');
 const slackService = require('../services/slackService');
 const authService = require('../services/authService');
@@ -78,15 +81,20 @@ function isAuthorized(req, meeting) {
 
 // --- Meetings --------------------------------------------------------------
 
+// The full transcript stays on the server: success statements and Ombeni's
+// answers use it, but the pages don't need it, and it's most of the size.
+const forClient = ({ transcriptEntries, ...meeting }) => meeting;
+
 router.get('/meetings', async (req, res) => {
   await store.ensureFreshMeetings();
-  const data = store.getMeetings().filter(m => isAuthorized(req, m));
+  const data = store.getMeetings().filter(m => isAuthorized(req, m)).map(forClient);
   res.json({ success: true, data });
 });
 
 router.post('/meetings/refresh', async (req, res) => {
   try {
-    const data = await store.refreshMeetings();
+    // Only the meetings this person attended, same as the list above.
+    const data = (await store.refreshMeetings()).filter(m => isAuthorized(req, m)).map(forClient);
     res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -153,7 +161,7 @@ router.get('/meetings/:id', (req, res) => {
   if (!isAuthorized(req, meeting)) {
     return res.status(403).json({ success: false, error: 'restricted' });
   }
-  res.json({ success: true, data: meeting });
+  res.json({ success: true, data: forClient(meeting) });
 });
 
 // Bulk delete (admin only). Declared before the single-delete :id route so
@@ -192,14 +200,48 @@ router.post('/meetings/:id/analyze', async (req, res) => {
 
     const analysis = await processMeetingAnalysis(meeting);
     const updated = store.setMeetingAnalysis(meeting.id, analysis);
-    store.logActivity({ action: `Analyzed meeting "${meeting.title}" with AI`, source: 'Ombeni AI' });
-
-    // Action items go straight to Monday.com — no separate manual step.
-    await store.syncActionItemsToMonday(updated);
-
-    res.json({ success: true, data: updated });
+    // Action items are no longer sent to Monday.com automatically: each person
+    // picks which of their own items to send, and to which board (My Work).
+    res.json({ success: true, data: forClient(updated) });
   } catch (err) {
-    store.logActivity({ action: `Failed to analyze meeting ${req.params.id}`, source: 'Ombeni AI', result: 'Error' });
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// A recap email to the client, saved as a draft in the person's own Gmail for
+// them to review and send. Only for client meetings they attended.
+router.post('/meetings/:id/recap-draft', async (req, res) => {
+  try {
+    const meeting = store.getMeeting(req.params.id);
+    if (!meeting) return res.status(404).json({ success: false, error: 'Meeting not found' });
+    if (!isAuthorized(req, meeting) || !(meeting.participants || []).length) {
+      return res.status(403).json({ success: false, error: 'restricted' });
+    }
+    const clients = meeting.participants.filter(e => !isCompanyEmail(e));
+    if (meeting.kind !== 'client' || !clients.length) {
+      return res.status(400).json({ success: false, error: 'There\'s no client on this meeting to write to.' });
+    }
+    const tokens = req.appSession.googleTokens;
+    if (!authService.canDraftEmail(tokens)) {
+      return res.status(409).json({ success: false, error: 'Allow Gmail drafts first.', needsGmail: true });
+    }
+
+    const brief = await workStore.getBrief(meeting.id);
+    let email;
+    try {
+      email = await writeRecapEmail(meeting, {
+        senderName: req.appSession.user && req.appSession.user.name,
+        waitingOnClient: (brief && brief.waitingOnClient) || []
+      });
+    } catch (err) {
+      console.error('⚠️ Recap email writing failed:', err.message);
+      return res.status(502).json({ success: false, error: 'Ombeni couldn\'t write the recap just now. Try again in a minute.' });
+    }
+
+    const draft = await gmailService.createDraft(tokens, { to: clients, subject: email.subject, body: email.body });
+    if (!draft.created) return res.status(502).json({ success: false, error: draft.reason, needsGmail: /allowed/.test(draft.reason) });
+    res.json({ success: true, data: { link: draft.link, to: clients, subject: email.subject } });
+  } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -262,7 +304,6 @@ router.post('/chat/attachment', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, error: 'No file provided' });
     const text = await extractText(req.file);
-    store.logActivity({ action: `Attached file "${req.file.originalname}" to Ask Ombeni`, source: 'Ombeni AI' });
     res.json({ success: true, data: { filename: req.file.originalname, text } });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -326,30 +367,26 @@ router.post('/chat', async (req, res) => {
     const { reply, sourcesUsed } = await handleChat(messages, {
       meetings: contextMeetings,
       calendarEvents,
+      // What people ask Ombeni, and the tasks they create through it, are
+      // theirs: none of it goes in the admins' Activity log.
       taskBoardId: await adminBoards.boardForAdmin(currentEmail(req)),
-      onTaskCreated: ({ task, mondayResult }) => {
-        store.logActivity({
-          user: req.appSession.user ? req.appSession.user.name : undefined,
-          action: `Created task "${task}" via Ask Ombeni`,
-          source: 'Monday.com',
-          result: mondayResult.created ? 'Success' : 'Pending (Monday.com not connected)'
-        });
-      }
-    });
-
-    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
-    store.logActivity({
-      user: req.appSession.user ? req.appSession.user.name : undefined,
-      action: `Asked Ombeni: "${(lastUserMessage && lastUserMessage.content || '').slice(0, 80)}"`,
-      source: 'Ombeni AI'
+      // Drafts in their own Gmail, only if they allowed it.
+      draftEmail: authService.canDraftEmail(req.appSession.googleTokens)
+        ? (email) => gmailService.createDraft(req.appSession.googleTokens, { to: email.to || [], subject: email.subject, body: email.body })
+        : null
     });
 
     res.json({ success: true, reply, sourcesUsed });
   } catch (err) {
-    store.logActivity({ action: 'Chat request failed', source: 'Ombeni AI', result: 'Error' });
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// --- My Work (each person's own success statements) --------------------------
+
+router.use('/work', require('./work'));
+router.use('/me', require('./me'));
+router.use('/clients', require('./clients'));
 
 // --- Activity log -----------------------------------------------------------
 

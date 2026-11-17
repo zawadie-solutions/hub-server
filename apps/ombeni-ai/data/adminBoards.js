@@ -48,25 +48,4 @@ async function setBoardForAdmin(email, boardId) {
   return normalized;
 }
 
-const words = (text) => String(text || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-
-// Meeting action items only name their owner as free text ("Kit", "Kit Masi"),
-// picked out by AI. Matched against the admins' email names, and only when it
-// points to exactly one admin, so a shared first name can't land a task on the
-// wrong person's board.
-async function adminForOwner(owner) {
-  const ownerWords = words(String(owner || '').split('@')[0]);
-  if (ownerWords.length === 0) return null;
-  const matches = (await admins.list()).filter((email) => {
-    const nameWords = words(email.split('@')[0]);
-    return ownerWords.every((word) => nameWords.includes(word));
-  });
-  return matches.length === 1 ? matches[0] : null;
-}
-
-async function boardForOwner(owner) {
-  const email = await adminForOwner(owner);
-  return email ? boardForAdmin(email) : null;
-}
-
-module.exports = { init, boardForAdmin, setBoardForAdmin, boardForOwner };
+module.exports = { init, boardForAdmin, setBoardForAdmin };
