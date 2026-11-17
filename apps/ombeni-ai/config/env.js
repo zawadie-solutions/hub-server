@@ -25,7 +25,6 @@ const env = {
   PORT: readOwn('PORT') || 3000,
   OPENAI_API_KEY: read('OPENAI_API_KEY'),
   MONDAY_API_KEY: read('MONDAY_API_KEY'),
-  MONDAY_BOARD_ID: read('MONDAY_BOARD_ID'),
   // Recorded meetings can live under more than one Monday.com/Notetaker
   // account (e.g. a teammate's own Notetaker bot that isn't shared into the
   // primary account) — MONDAY_API_KEY_2, _3, etc. let the Notetaker fetch
@@ -70,11 +69,17 @@ const env = {
   // SESSION_SECRET; if that one changes, people just connect Google again.
   TOKEN_KEY: readOwn('TOKEN_KEY') || process.env.SESSION_SECRET || '',
   // "off" stops morning messages and meeting prep notes (e.g. for local testing).
-  COWORKER: readOwn('COWORKER') !== 'off'
+  COWORKER: readOwn('COWORKER') !== 'off',
+  // The Ombeni AI app in Monday's Developer Center ("Connect Monday"): each
+  // person's own Monday account, for their boards and tasks.
+  MONDAY_CLIENT_ID: read('MONDAY_CLIENT_ID'),
+  MONDAY_CLIENT_SECRET: read('MONDAY_CLIENT_SECRET'),
+  MONDAY_REDIRECT_URI: readOwn('MONDAY_REDIRECT_URI')
 };
+// Must match the Redirect URL set on the Monday app exactly.
+env.MONDAY_REDIRECT_URI = env.MONDAY_REDIRECT_URI || `${env.APP_URL.endsWith('/') ? env.APP_URL : `${env.APP_URL}/`}auth/monday/callback`;
 
 env.isOpenAIConfigured = Boolean(env.OPENAI_API_KEY);
-env.isMondayConfigured = Boolean(env.MONDAY_API_KEY && env.MONDAY_BOARD_ID);
 env.isSlackConfigured = Boolean(env.SLACK_BOT_TOKEN && env.SLACK_CHANNEL);
 env.isSlackDmConfigured = Boolean(env.SLACK_BOT_TOKEN);
 // Buttons and thread replies in Slack need Slack to reach the hub, signed with this.

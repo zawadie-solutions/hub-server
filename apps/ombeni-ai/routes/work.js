@@ -16,9 +16,9 @@ const workStore = require('../data/workStore');
 const people = require('../data/people');
 const admins = require('../data/admins');
 const mondayService = require('../services/mondayService');
+const mondayAuth = require('../services/mondayAuth');
 const { askAboutAssignment } = require('../services/openaiService');
 const { mondayUpdateText } = require('../services/statements');
-const env = require('../config/env');
 
 const router = express.Router();
 
@@ -66,7 +66,7 @@ router.get('/', async (req, res) => {
         mine: mine.sort(byNewest),
         unassigned: unassigned.sort(byNewest),
         waitingOnClient,
-        mondayConnected: Boolean(env.MONDAY_API_KEY)
+        mondayConnected: Boolean(await mondayAuth.tokenFor(email))
       }
     });
   } catch (err) {
@@ -122,11 +122,23 @@ router.post('/:id/claim', async (req, res) => {
   }
 });
 
+// The person's own Monday access, or a 409 telling the page to offer Connect Monday.
+async function myMonday(req, res) {
+  const token = await mondayAuth.tokenFor(me(req));
+  if (!token) {
+    res.status(409).json({ success: false, error: 'Connect your Monday account first (Settings > Your co-worker).', needsMonday: true });
+    return null;
+  }
+  return token;
+}
+
 router.get('/boards', async (req, res) => {
   try {
-    res.json({ success: true, data: await mondayService.listBoardsFor(me(req)) });
+    const token = await myMonday(req, res);
+    if (!token) return;
+    res.json({ success: true, data: await mondayService.listMyBoards(token) });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(502).json({ success: false, error: `Couldn't read your Monday boards: ${err.message}` });
   }
 });
 
@@ -142,16 +154,20 @@ router.post('/:id/monday', async (req, res) => {
     if (!assignment) return;
     if (assignment.monday) return res.status(409).json({ success: false, error: 'This is already on Monday.com.' });
 
-    const board = (await mondayService.listBoardsFor(me(req))).find(b => b.id === String(req.body.boardId || ''));
+    const token = await myMonday(req, res);
+    if (!token) return;
+    // Checked against the boards Monday says they can open, as them.
+    const board = (await mondayService.listMyBoards(token)).find(b => b.id === String(req.body.boardId || ''));
     if (!board) return res.status(400).json({ success: false, error: 'Pick one of your own Monday.com boards.' });
 
+    const person = await people.get(me(req));
     const result = await mondayService.createTask({
+      token,
+      boardId: board.id,
       task: assignment.title,
-      owner: myName(req),
-      ownerEmail: me(req),
+      ownerUserId: person && person.monday ? person.monday.userId : null,
       due: assignment.statement.due,
-      project: assignment.meetingTitle,
-      boardId: board.id
+      project: assignment.meetingTitle
     });
     if (!result.created) {
       return res.status(502).json({ success: false, error: result.error || 'Monday.com didn\'t accept the task.' });
@@ -160,7 +176,7 @@ router.post('/:id/monday', async (req, res) => {
     // The full statement goes on the item too, so it's there for whoever opens it.
     let statementAdded = true;
     try {
-      await mondayService.addUpdate(result.itemId, mondayUpdateText(assignment));
+      await mondayService.addUpdate(result.itemId, mondayUpdateText(assignment), token);
     } catch (err) {
       statementAdded = false;
       console.error('⚠️ Could not add the success statement to the Monday item:', err.message);
