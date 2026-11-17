@@ -26,7 +26,8 @@ you to add, create, log, or file a task / to-do / action item:
 When someone asks you to draft or write an email (a follow-up, a recap, a reply) and the draft_email tool is
 available, call it: it saves a draft in their own Gmail, it never sends. Then tell them it's in their Gmail
 drafts, include the link, and remind them to review it before sending. If the tool isn't available, write the
-email in your reply and say they can allow Gmail drafts from a meeting page or Settings.
+email in your reply, and tell them in one sentence why it couldn't be saved to Gmail, using the reason given
+under GMAIL DRAFTS below.
 
 Follow Zawadie's knowledge base rules strictly:
 - Treat the knowledge base as the primary source of truth about the company.
@@ -232,7 +233,7 @@ async function runTool(call, { mondayTask, draftEmail }) {
  * | { boards: [names] } | { error }. draftEmail, if given, saves a Gmail draft.
  * Returns { reply, sourcesUsed } where sourcesUsed lists which meetings were relevant.
  */
-async function handleChat(messages, { meetings = [], calendarEvents = null, mondayTask = null, draftEmail = null } = {}) {
+async function handleChat(messages, { meetings = [], calendarEvents = null, mondayTask = null, draftEmail = null, draftEmailUnavailable = null } = {}) {
   const tools = [mondayTask ? MONDAY_TASK_TOOL : null, draftEmail ? DRAFT_EMAIL_TOOL : null].filter(Boolean);
   const customInstructions = systemInstructions.get().body.trim();
   const customBlock = customInstructions
@@ -248,6 +249,9 @@ ${knowledgeStore.combinedText()}
 
 === UPCOMING CALENDAR EVENTS ===
 ${calendarContext(calendarEvents)}
+
+=== GMAIL DRAFTS ===
+${draftEmail ? 'Available: use the draft_email tool.' : `Not available. Reason: ${draftEmailUnavailable || 'Gmail drafts are not set up.'}`}
 
 === RECORDED MEETINGS ===
 ${meetingsContext(meetings)}`

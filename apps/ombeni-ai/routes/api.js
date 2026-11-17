@@ -8,6 +8,7 @@ const knowledgeStore = require('../data/knowledgeStore');
 const systemInstructions = require('../data/systemInstructions');
 const admins = require('../data/admins');
 const mondayAuth = require('../services/mondayAuth');
+const people = require('../data/people');
 const myMonday = require('../services/myMonday');
 const { processMeetingAnalysis, handleChat, writeRecapEmail } = require('../services/openaiService');
 const gmailService = require('../services/gmailService');
@@ -79,6 +80,19 @@ function isAuthorized(req, meeting) {
   return store.isAuthorizedForMeeting(meeting, currentEmail(req));
 }
 
+// The person's Google connection: the one Ombeni stored (always the latest,
+// e.g. after they allowed Gmail drafts in another tab or browser), falling
+// back to this sign-in's own. Also kept on the session, for the next request.
+async function googleTokensFor(req) {
+  const email = currentEmail(req);
+  const stored = email ? people.googleTokens(await people.get(email)) : null;
+  if (stored) {
+    req.appSession.googleTokens = stored;
+    return stored;
+  }
+  return req.appSession.googleTokens || null;
+}
+
 // --- Meetings --------------------------------------------------------------
 
 // The full transcript stays on the server: success statements and Ombeni's
@@ -116,7 +130,7 @@ const normalizeTitle = (s) => (s || '').toLowerCase().trim();
 // recordings (same day + overlapping title) so a meeting that already has a
 // recording shows as recorded instead of duplicating it as "upcoming."
 router.get('/meetings/upcoming', async (req, res) => {
-  const tokens = req.appSession.googleTokens;
+  const tokens = await googleTokensFor(req);
   if (!tokens || !tokens.refresh_token) {
     // Sessions started before calendar access was added won't have a refresh
     // token yet — signing out and back in grants it.
@@ -221,7 +235,7 @@ router.post('/meetings/:id/recap-draft', async (req, res) => {
     if (meeting.kind !== 'client' || !clients.length) {
       return res.status(400).json({ success: false, error: 'There\'s no client on this meeting to write to.' });
     }
-    const tokens = req.appSession.googleTokens;
+    const tokens = await googleTokensFor(req);
     if (!authService.canDraftEmail(tokens)) {
       return res.status(409).json({ success: false, error: 'Allow Gmail drafts first.', needsGmail: true });
     }
@@ -349,7 +363,7 @@ router.post('/chat', async (req, res) => {
     // happened, so without this the model had nothing to answer from and
     // fell back to a generic "I can't access your calendar" disclaimer.
     let calendarEvents = null;
-    const tokens = req.appSession.googleTokens;
+    const tokens = await googleTokensFor(req);
     if (tokens && tokens.refresh_token) {
       try {
         const todayRange = dayBounds(0);
@@ -373,9 +387,15 @@ router.post('/chat', async (req, res) => {
       // board they named.
       mondayTask: (await mondayAuth.tokenFor(currentEmail(req))) ? (args) => myMonday.createMyTask(currentEmail(req), args) : null,
       // Drafts in their own Gmail, only if they allowed it.
-      draftEmail: authService.canDraftEmail(req.appSession.googleTokens)
-        ? (email) => gmailService.createDraft(req.appSession.googleTokens, { to: email.to || [], subject: email.subject, body: email.body })
-        : null
+      draftEmail: authService.canDraftEmail(tokens)
+        ? (email) => gmailService.createDraft(tokens, { to: email.to || [], subject: email.subject, body: email.body })
+        : null,
+      // When drafts can't be saved, the exact reason, so Ombeni can say what to do.
+      draftEmailUnavailable: authService.canDraftEmail(tokens)
+        ? null
+        : !tokens
+          ? 'Google isn\'t connected for this person. They connect it in Settings > Your co-worker > Connect Google, then click Allow Gmail drafts.'
+          : 'Google is connected, but the Gmail drafts permission wasn\'t granted. In Settings > Your co-worker they click Allow Gmail drafts, and on Google\'s screen they must tick the box for Gmail ("Manage drafts and send emails"); if it\'s left unticked, Google grants everything except Gmail.'
     });
 
     res.json({ success: true, reply, sourcesUsed });
