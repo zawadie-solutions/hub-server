@@ -138,6 +138,15 @@ test('recap drafts: only for attendees, and only once Gmail drafts are allowed',
   assert.equal(noGmail.body.needsGmail, true);
 });
 
+test('Gmail drafts allowed elsewhere count, even if this browser\'s sign-in is older', async () => {
+  // This browser's session only has the calendar; the stored connection has Gmail.
+  await people.saveGoogle(KIT, { refresh_token: 'r', scope: 'openid https://www.googleapis.com/auth/gmail.compose' }, 'Kit Alimasi');
+  const res = await call(KIT, 'POST', '/api/meetings/k1/recap-draft');
+  assert.notEqual(res.status, 409, 'not asked to allow Gmail again');
+  assert.notEqual(res.body.needsGmail, true);
+  await people.saveGoogle(KIT, { refresh_token: 'r', scope: 'openid' }, 'Kit Alimasi');
+});
+
 test('co-worker settings belong to the signed-in person', async () => {
   const res = await fetch(`${base}/api/me/coworker`, { method: 'PUT', headers: { 'x-test-user': TYLER, 'Content-Type': 'application/json' }, body: JSON.stringify({ morning: false }) }).then(r => r.json());
   assert.equal(res.data.prefs.morning, false);
