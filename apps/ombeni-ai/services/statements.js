@@ -212,8 +212,12 @@ function formatDue(statement) {
   return statement.dueSaid || null;
 }
 
-/** The DM a person gets for a new assignment: { text, blocks }. */
-function slackMessage(assignment, link) {
+/**
+ * The DM a person gets for a new assignment: { text, blocks }. interactive:
+ * Slack can reach Ombeni, so the buttons work in Slack and replies in the
+ * thread are answered; otherwise there's only a link to My Work.
+ */
+function slackMessage(assignment, link, { interactive = false } = {}) {
   const s = assignment.statement;
   const due = formatDue(s);
   const lines = [];
@@ -231,11 +235,32 @@ function slackMessage(assignment, link) {
     // Slack caps a section's text at 3000 characters.
     ...lines.map(text => ({ type: 'section', text: { type: 'mrkdwn', text: text.slice(0, 2900) } })),
     { type: 'divider' },
-    {
-      type: 'actions',
-      elements: [{ type: 'button', text: { type: 'plain_text', text: 'Open in Ombeni' }, url: link, style: 'primary' }]
-    },
-    { type: 'context', elements: [{ type: 'mrkdwn', text: 'In Ombeni, tap *Got it* once you\'ve read this, or *Not mine* if it isn\'t your work.' }] }
+    ...(interactive ? [
+      {
+        type: 'actions',
+        block_id: 'ombeni_assignment',
+        elements: [
+          { type: 'button', action_id: 'ombeni_got_it', value: assignment.id, text: { type: 'plain_text', text: 'Got it' }, style: 'primary' },
+          {
+            type: 'button', action_id: 'ombeni_not_mine', value: assignment.id, text: { type: 'plain_text', text: 'Not mine' },
+            confirm: {
+              title: { type: 'plain_text', text: 'Give this back?' },
+              text: { type: 'plain_text', text: 'It goes to the other Zawadie people from that meeting, so one of them can take it.' },
+              confirm: { type: 'plain_text', text: 'Give it back' },
+              deny: { type: 'plain_text', text: 'Keep it' }
+            }
+          },
+          { type: 'button', action_id: 'ombeni_open', text: { type: 'plain_text', text: 'Open in Ombeni' }, url: link }
+        ]
+      },
+      { type: 'context', elements: [{ type: 'mrkdwn', text: '*Reply in this thread:* say in your own words what you\'ll deliver and I\'ll check you\'ve got it all  ·  end with *?* to ask about it  ·  attach your draft to check it before you deliver.' }] }
+    ] : [
+      {
+        type: 'actions',
+        elements: [{ type: 'button', text: { type: 'plain_text', text: 'Open in Ombeni' }, url: link, style: 'primary' }]
+      },
+      { type: 'context', elements: [{ type: 'mrkdwn', text: 'In Ombeni, tap *Got it* once you\'ve read this, or *Not mine* if it isn\'t your work.' }] }
+    ])
   ];
   return { text: `${assignment.title}: ${heading}`, blocks };
 }

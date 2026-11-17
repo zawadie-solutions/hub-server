@@ -37,6 +37,9 @@ const env = {
     .filter(Boolean),
   SLACK_BOT_TOKEN: read('SLACK_BOT_TOKEN'),
   SLACK_CHANNEL: read('SLACK_CHANNEL'),
+  // From the Slack app's "Basic Information" page. Proves a button press or
+  // thread reply really came from Slack.
+  SLACK_SIGNING_SECRET: read('SLACK_SIGNING_SECRET'),
   GOOGLE_CLIENT_ID: read('GOOGLE_CLIENT_ID'),
   GOOGLE_CLIENT_SECRET: read('GOOGLE_CLIENT_SECRET'),
   GOOGLE_REDIRECT_URI: read('GOOGLE_REDIRECT_URI'),
@@ -72,6 +75,8 @@ env.isOpenAIConfigured = Boolean(env.OPENAI_API_KEY);
 env.isMondayConfigured = Boolean(env.MONDAY_API_KEY && env.MONDAY_BOARD_ID);
 env.isSlackConfigured = Boolean(env.SLACK_BOT_TOKEN && env.SLACK_CHANNEL);
 env.isSlackDmConfigured = Boolean(env.SLACK_BOT_TOKEN);
+// Buttons and thread replies in Slack need Slack to reach the hub, signed with this.
+env.isSlackInteractive = Boolean(env.SLACK_BOT_TOKEN && env.SLACK_SIGNING_SECRET);
 env.isNotetakerConfigured = env.MONDAY_API_KEYS.length > 0;
 env.isGoogleConfigured = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 

@@ -9,7 +9,8 @@
 const express = require('express');
 const multer = require('multer');
 const store = require('../data/store');
-const checkService = require('../services/checkService');
+const workActions = require('../services/workActions');
+const { notifyOwner } = require('../services/statementService');
 const { extractText, SUPPORTED } = require('../services/fileParser');
 const workStore = require('../data/workStore');
 const mondayService = require('../services/mondayService');
@@ -81,27 +82,13 @@ async function ownAssignment(req, res) {
   return assignment;
 }
 
-const RESPONSES = {
-  got_it: (a) => ({ ...a, status: 'confirmed', confirmedAt: new Date().toISOString() }),
-  done: (a) => ({ ...a, status: 'done', doneAt: new Date().toISOString() }),
-  reopen: (a) => ({ ...a, status: 'confirmed', doneAt: null })
-};
-
 router.post('/:id/respond', async (req, res) => {
   try {
     const assignment = await ownAssignment(req, res);
     if (!assignment) return;
     const response = String(req.body.response || '');
-
-    if (response === 'not_mine') {
-      // Back to the meeting's attendees, who can take it.
-      const declinedBy = [...new Set([...(assignment.declinedBy || []), me(req)])];
-      // Their own explanation and checks stay private: they don't pass on with the work.
-      await workStore.saveAssignment({ ...assignment, ownerEmail: null, status: 'new', declinedBy, slack: null, explained: null, checks: [] });
-      return res.json({ success: true, data: null });
-    }
-    if (!RESPONSES[response]) return res.status(400).json({ success: false, error: 'Unknown response' });
-    res.json({ success: true, data: await workStore.saveAssignment(RESPONSES[response](assignment)) });
+    if (!workActions.isResponse(response)) return res.status(400).json({ success: false, error: 'Unknown response' });
+    res.json({ success: true, data: await workActions.respond(assignment, response, me(req)) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -125,6 +112,8 @@ router.post('/:id/claim', async (req, res) => {
       status: 'confirmed',
       confirmedAt: new Date().toISOString()
     });
+    // They get the statement in Slack too, with its own thread to reply in.
+    notifyOwner(data).then(slack => slack && workStore.saveAssignment({ ...data, slack })).catch(err => console.error('⚠️ Slack DM after taking work failed:', err.message));
     res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -201,29 +190,18 @@ router.post('/:id/explain', async (req, res) => {
     const text = String(req.body.text || '').trim();
     if (text.length < 15) return res.status(400).json({ success: false, error: 'Write a sentence or two about what you\'re going to deliver.' });
 
-    let result;
     try {
-      result = await checkService.checkExplanation(assignment, text);
+      res.json({ success: true, data: (await workActions.explain(assignment, text)).assignment });
     } catch (err) {
       console.error('⚠️ Explain-it-back check failed:', err.message);
-      return res.status(502).json({ success: false, error: AI_UNAVAILABLE });
+      res.status(502).json({ success: false, error: AI_UNAVAILABLE });
     }
-
-    const now = new Date().toISOString();
-    const confirmed = result.ready && assignment.status === 'new';
-    const data = await workStore.saveAssignment({
-      ...assignment,
-      explained: { text: text.slice(0, 4000), result, at: now },
-      ...(confirmed ? { status: 'confirmed', confirmedAt: now } : {})
-    });
-    res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
-const KEEP_CHECKS = 5;
 
 // Check my work: a draft (file or pasted text) or a description of what they
 // did, checked against every requirement before it's delivered. Only the
@@ -245,20 +223,12 @@ router.post('/:id/check', upload.single('file'), async (req, res) => {
     }
     if (!workText) return res.status(400).json({ success: false, error: 'Add your draft, or describe what you did.' });
 
-    let result;
     try {
-      result = await checkService.checkWork(assignment, workText);
+      res.json({ success: true, data: (await workActions.checkWork(assignment, workText, source)).assignment });
     } catch (err) {
       console.error('⚠️ Work check failed:', err.message);
-      return res.status(502).json({ success: false, error: AI_UNAVAILABLE });
+      res.status(502).json({ success: false, error: AI_UNAVAILABLE });
     }
-
-    const check = { at: new Date().toISOString(), source: source.slice(0, 200), result };
-    const data = await workStore.saveAssignment({
-      ...assignment,
-      checks: [check, ...(assignment.checks || [])].slice(0, KEEP_CHECKS)
-    });
-    res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

@@ -8,6 +8,19 @@ const { verifyHubUser, nameFromEmail } = require('./services/hubTrust');
 const app = express();
 const PORT = env.PORT;
 
+// Slack buttons and thread replies (see services/slackHooks.js). Inside the hub
+// they arrive at /hooks/ombeni-ai/<name>, outside its login; standalone, at
+// /hooks/<name>. Raw body, before the JSON parser, for Slack's signature check.
+const slackHooks = require('./services/slackHooks');
+app.publicHooks = { 'slack-events': slackHooks.events, 'slack-interactions': slackHooks.interactions };
+if (!env.IN_HUB) {
+  app.post('/hooks/:hook', express.raw({ type: '*/*', limit: '1mb' }), (req, res, next) => {
+    const hook = Object.prototype.hasOwnProperty.call(app.publicHooks, req.params.hook) ? app.publicHooks[req.params.hook] : null;
+    if (!hook) return res.status(404).send('Not found');
+    Promise.resolve(hook(req, res)).catch(next);
+  });
+}
+
 app.use(express.json());
 
 // This app's per-user state (who's signed in here, Google Calendar tokens) lives on

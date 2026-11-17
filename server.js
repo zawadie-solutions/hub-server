@@ -61,6 +61,21 @@ app.set('strict routing', true);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
+// ---------------- public hooks ----------------
+// A built-in solution can take calls from an outside service (e.g. Slack
+// button clicks and thread replies) at POST /hooks/<solution>/<hook>, without
+// the hub login: the outside service has no hub session. Each hook checks the
+// caller's own signature, so it gets the body exactly as sent (raw), which is
+// why this sits before every body parser and the session. A solution offers
+// hooks by putting them on its handler as `publicHooks` (see mountBuiltInSolutions).
+const publicHooks = {};
+app.post('/hooks/:solution/:hook', express.raw({ type: '*/*', limit: '1mb' }), (req, res, next) => {
+  const hooks = Object.prototype.hasOwnProperty.call(publicHooks, req.params.solution) ? publicHooks[req.params.solution] : null;
+  const hook = hooks && Object.prototype.hasOwnProperty.call(hooks, req.params.hook) ? hooks[req.params.hook] : null;
+  if (typeof hook !== 'function') return res.status(404).send('Not found');
+  Promise.resolve(hook(req, res)).catch(next);
+});
+
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(
@@ -365,6 +380,7 @@ async function mountBuiltInSolutions() {
     try {
       const { createSolution } = await sol.load();
       handler = await createSolution({ userOf: (req) => req.session.user?.email ?? null, signOutPath: '/logout' });
+      if (handler && handler.publicHooks) publicHooks[sol.id] = handler.publicHooks;
       console.log(`[built-in] ${sol.id} ready`);
     } catch (err) {
       console.error(`[built-in] ${sol.id} failed to start:`, err.message);

@@ -64,11 +64,22 @@ function appLink(assignmentId) {
   return `${base}#work/${assignmentId}`;
 }
 
+// Which assignment a Slack DM is about, so a reply in its thread or a button
+// press can be matched back to it (see slackHooks.js).
+const threadKey = (channel, ts) => `slack:${channel}:${ts}`;
+
 async function notifyOwner(assignment) {
   if (!assignment.ownerEmail) return null;
   if (!env.SEND_SLACK_DMS) return { status: 'not_sent', reason: 'Slack messages are switched off', at: new Date().toISOString() };
-  const result = await slackService.sendDirectMessage(assignment.ownerEmail, slackMessage(assignment, appLink(assignment.id)));
-  return { status: result.sent ? 'sent' : 'not_sent', reason: result.reason || null, at: new Date().toISOString() };
+  const message = slackMessage(assignment, appLink(assignment.id), { interactive: env.isSlackInteractive });
+  const result = await slackService.sendDirectMessage(assignment.ownerEmail, message);
+  if (result.sent && result.channel && result.ts) await workStore.setSetting(threadKey(result.channel, result.ts), assignment.id);
+  return { status: result.sent ? 'sent' : 'not_sent', reason: result.reason || null, channel: result.channel || null, ts: result.ts || null, at: new Date().toISOString() };
+}
+
+async function assignmentForThread(channel, ts) {
+  const id = await workStore.getSetting(threadKey(channel, ts));
+  return id ? workStore.getAssignment(id) : null;
 }
 
 async function writeStatements(meeting) {
@@ -145,4 +156,4 @@ async function processNewMeetings(meetings) {
   }
 }
 
-module.exports = { processNewMeetings, isEligibleMeeting, shouldRetry, appLink, writeStatements };
+module.exports = { processNewMeetings, isEligibleMeeting, shouldRetry, appLink, writeStatements, notifyOwner, assignmentForThread };
