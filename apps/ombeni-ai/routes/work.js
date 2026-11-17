@@ -10,9 +10,11 @@ const express = require('express');
 const multer = require('multer');
 const store = require('../data/store');
 const workActions = require('../services/workActions');
-const { notifyOwner } = require('../services/statementService');
+const statementService = require('../services/statementService');
 const { extractText, SUPPORTED } = require('../services/fileParser');
 const workStore = require('../data/workStore');
+const people = require('../data/people');
+const admins = require('../data/admins');
 const mondayService = require('../services/mondayService');
 const { askAboutAssignment } = require('../services/openaiService');
 const { mondayUpdateText } = require('../services/statements');
@@ -113,7 +115,7 @@ router.post('/:id/claim', async (req, res) => {
       confirmedAt: new Date().toISOString()
     });
     // They get the statement in Slack too, with its own thread to reply in.
-    notifyOwner(data).then(slack => slack && workStore.saveAssignment({ ...data, slack })).catch(err => console.error('⚠️ Slack DM after taking work failed:', err.message));
+    statementService.notifyOwner(data).then(slack => slack && workStore.saveAssignment({ ...data, slack })).catch(err => console.error('⚠️ Slack DM after taking work failed:', err.message));
     res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -173,6 +175,90 @@ router.post('/:id/monday', async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   } finally {
     sending.delete(id);
+  }
+});
+
+// ---- Samples: try Ombeni without waiting for a real assignment ----
+
+const SAMPLES_PER_DAY = 3;
+const sampling = new Set();
+
+// Builds a [Sample] assignment for the signed-in person only, from their own
+// most recent recorded meeting, and sends it to their Slack like a real one,
+// so they can try the buttons and thread replies. Their own work from that
+// meeting is used if there is any; otherwise the most detailed one.
+// Admins only: it's for testing Slack and showing people how Ombeni works, not
+// part of everyone's day. The sample is still only ever for the admin asking.
+router.post('/sample', async (req, res) => {
+  const email = me(req);
+  try {
+    if (!(await admins.isAdmin(email))) return res.status(403).json({ success: false, error: 'Only Ombeni admins can send samples.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+  if (sampling.has(email)) return res.status(409).json({ success: false, error: 'A sample is already on its way.' });
+  sampling.add(email);
+  try {
+    // Counted when made, not kept: each one is an AI call, so deleting one
+    // doesn't free up another.
+    const today = new Date().toISOString().slice(0, 10);
+    const person = (await people.get(email)) || {};
+    const made = person.samplesMade && person.samplesMade.date === today ? person.samplesMade.count : 0;
+    if (made >= SAMPLES_PER_DAY) {
+      return res.status(429).json({ success: false, error: `That's ${SAMPLES_PER_DAY} samples today. Try again tomorrow.` });
+    }
+    const meeting = myMeetings(email)
+      .filter(m => (m.transcriptEntries || []).length)
+      .sort((a, b) => String(b.startTime || b.date).localeCompare(String(a.startTime || a.date)))[0];
+    if (!meeting) return res.status(404).json({ success: false, error: "You don't have a recorded meeting with a transcript yet." });
+
+    let result;
+    try {
+      result = await statementService.writeStatements(meeting);
+    } catch (err) {
+      console.error('⚠️ Sample statement failed:', err.message);
+      return res.status(502).json({ success: false, error: AI_UNAVAILABLE });
+    }
+    const detail = (a) => a.statement.mustHaves.length + a.statement.avoid.length;
+    const picked = result.assignments.find(a => a.ownerEmail === email)
+      || [...result.assignments].sort((a, b) => detail(b) - detail(a))[0];
+    if (!picked) return res.status(422).json({ success: false, error: `Ombeni found no clear piece of work in "${meeting.title}" to make a sample from.` });
+    await people.update(email, { samplesMade: { date: today, count: made + 1 } });
+
+    let assignment = await workStore.saveAssignment({
+      ...picked,
+      title: `[Sample] ${picked.title}`.slice(0, 200),
+      ownerEmail: email,
+      ownerName: myName(req),
+      meetingId: meeting.id,
+      meetingTitle: meeting.title,
+      meetingDate: meeting.date,
+      status: 'new',
+      declinedBy: [],
+      sample: true,
+      slack: null,
+      monday: null
+    });
+    const slack = await statementService.notifyOwner(assignment);
+    if (slack) assignment = await workStore.saveAssignment({ ...assignment, slack });
+    res.json({ success: true, data: assignment });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  } finally {
+    sampling.delete(email);
+  }
+});
+
+// Only samples can be deleted: real work is given back with "Not mine" instead.
+router.delete('/:id', async (req, res) => {
+  try {
+    const assignment = await ownAssignment(req, res);
+    if (!assignment) return;
+    if (!assignment.sample) return res.status(400).json({ success: false, error: 'Only samples can be deleted. Use "Not mine" to give real work back.' });
+    await workStore.deleteAssignment(assignment.id);
+    res.json({ success: true, data: null });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

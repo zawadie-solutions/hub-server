@@ -369,3 +369,5 @@ button, input { font-family: inherit; font-size: inherit; }
 @media (max-width: 640px) { .check-row { grid-template-columns: 1fr; gap: 4px; } .check-row .tag { justify-self: start; } }
 .coworker-toggle { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; cursor: pointer; }
 .coworker-toggle input { margin-top: 3px; accent-color: var(--ombeni-magenta); width: 16px; height: 16px; flex-shrink: 0; }
+.coworker-try { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--ombeni-border); font-size: 13.5px; }
+.coworker-try > div { flex: 1; min-width: 220px; }

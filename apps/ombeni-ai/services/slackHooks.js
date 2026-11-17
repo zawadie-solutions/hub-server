@@ -19,16 +19,35 @@ const replies = require('./slackReplies');
 
 const MAX_AGE_S = 5 * 60;
 
-/** Slack's request signing (v0): HMAC-SHA256 of "v0:<timestamp>:<raw body>". */
-function verify(rawBody, headers, secret = env.SLACK_SIGNING_SECRET, now = Date.now()) {
-  if (!secret || !Buffer.isBuffer(rawBody)) return false;
+/**
+ * Slack's request signing (v0): HMAC-SHA256 of "v0:<timestamp>:<raw body>".
+ * Returns 'ok', or why not: 'no_secret' | 'no_body' | 'stale' | 'mismatch'.
+ */
+function check(rawBody, headers, secret = env.SLACK_SIGNING_SECRET, now = Date.now()) {
+  if (!secret) return 'no_secret';
+  if (!Buffer.isBuffer(rawBody)) return 'no_body';
   const ts = Number(headers['x-slack-request-timestamp']);
   const sig = String(headers['x-slack-signature'] || '');
-  if (!ts || Math.abs(now / 1000 - ts) > MAX_AGE_S) return false;
+  if (!ts || Math.abs(now / 1000 - ts) > MAX_AGE_S) return 'stale';
   const expected = `v0=${crypto.createHmac('sha256', secret).update(`v0:${ts}:${rawBody.toString('utf8')}`).digest('hex')}`;
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  return a.length === b.length && crypto.timingSafeEqual(a, b) ? 'ok' : 'mismatch';
+}
+
+const verify = (...args) => check(...args) === 'ok';
+
+// Refuses a call that isn't Slack's, saying plainly which setting is wrong
+// (never the secret itself), so a setup problem can be found from outside.
+function refuse(req, res) {
+  const reason = check(req.body, req.headers);
+  if (reason === 'ok') return false;
+  console.error(`⚠️ Slack call refused (${reason}): ${req.originalUrl}`);
+  if (reason === 'no_secret') res.status(503).send('The Slack signing secret is not set on the server (OMBENI_SLACK_SIGNING_SECRET).');
+  else if (reason === 'no_body') res.status(500).send('The request body did not reach Ombeni unchanged.');
+  else if (reason === 'stale') res.status(401).send('Request too old or missing its Slack timestamp.');
+  else res.status(401).send('Invalid signature: the signing secret on the server does not match this Slack app.');
+  return true;
 }
 
 // Slack retries an event it thinks went unanswered; each is handled once.
@@ -59,10 +78,10 @@ async function ownedAssignment(assignment, slackUserId, reply) {
 
 async function handleThreadReply(event) {
   const reply = (message) => slackService.postMessage(event.channel, event.thread_ts, message);
-  const assignment = await ownedAssignment(await statementService.assignmentForThread(event.channel, event.thread_ts), event.user, reply);
-  if (!assignment) {
-    return;
-  }
+  const found = await statementService.assignmentForThread(event.channel, event.thread_ts);
+  if (!found) return reply(replies.plain("I can't find this assignment anymore (a deleted sample, maybe). Your work is in My Work."));
+  const assignment = await ownedAssignment(found, event.user, reply);
+  if (!assignment) return;
 
   // An attached draft: check it.
   const file = (event.files || [])[0];
@@ -122,7 +141,7 @@ async function handleEvent(event) {
 }
 
 async function events(req, res) {
-  if (!verify(req.body, req.headers)) return res.status(401).send('Invalid signature');
+  if (refuse(req, res)) return;
   let body;
   try {
     body = JSON.parse(req.body.toString('utf8'));
@@ -157,7 +176,7 @@ async function handleAction(payload) {
 }
 
 async function interactions(req, res) {
-  if (!verify(req.body, req.headers)) return res.status(401).send('Invalid signature');
+  if (refuse(req, res)) return;
   let payload;
   try {
     payload = JSON.parse(new URLSearchParams(req.body.toString('utf8')).get('payload') || '{}');
@@ -170,4 +189,4 @@ async function interactions(req, res) {
   }
 }
 
-module.exports = { verify, events, interactions, handleEvent, handleAction };
+module.exports = { verify, check, events, interactions, handleEvent, handleAction };

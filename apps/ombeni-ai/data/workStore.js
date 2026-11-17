@@ -128,6 +128,11 @@ async function saveAssignment(assignment) {
   return record;
 }
 
+async function deleteAssignment(id) {
+  if (!db) { delete fileData().assignments[id]; saveFile(); return; }
+  await db.query('DELETE FROM ombeni_assignments WHERE id = ?', [String(id)]);
+}
+
 async function assignmentsForOwner(email) {
   const owner = String(email || '').toLowerCase();
   if (!owner) return [];
@@ -157,6 +162,7 @@ module.exports = {
   saveBrief,
   getAssignment,
   saveAssignment,
+  deleteAssignment,
   assignmentsForOwner,
   unassignedForMeetings
 };

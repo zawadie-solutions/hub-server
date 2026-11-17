@@ -61,6 +61,22 @@ test('only requests signed by Slack, and recent ones, are accepted', () => {
   assert.equal(slackHooks.verify(raw, sign(raw), ''), false, 'no secret configured: nothing accepted');
 });
 
+test('a refused call says which setting is wrong', () => {
+  const raw = Buffer.from('{}');
+  assert.equal(slackHooks.check(raw, sign(raw)), 'ok');
+  assert.equal(slackHooks.check(raw, sign(raw), ''), 'no_secret');
+  assert.equal(slackHooks.check('{}', sign(raw)), 'no_body', 'body already parsed by something else');
+  assert.equal(slackHooks.check(raw, sign(raw, Math.floor(Date.now() / 1000) - 600)), 'stale');
+  assert.equal(slackHooks.check(raw, sign(raw, undefined, 'other')), 'mismatch');
+});
+
+test('settings pasted with stray spaces or line breaks still work', () => {
+  process.env.SLACK_SIGNING_SECRET = '  signing-secret\n';
+  delete require.cache[require.resolve('../config/env')];
+  assert.equal(require('../config/env').SLACK_SIGNING_SECRET, 'signing-secret');
+  process.env.SLACK_SIGNING_SECRET = 'signing-secret';
+});
+
 // The same route the hub mounts: raw body in, then the hook.
 let server, base;
 test.before(async () => {
