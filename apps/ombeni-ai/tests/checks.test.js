@@ -60,6 +60,36 @@ test('explaining back is ready only when nothing is missed, different or in conf
   assert.equal(normalizeExplain(all('covered', 'conflict'), assignment).ready, false);
 });
 
+test('checking a picture: the AI writes down what it can read, and evidence must be in that', () => {
+  const prompt = workPrompt(assignment, 'Here is my mock-up', { hasImage: true });
+  assert.match(prompt, /IMAGE of the work/);
+  assert.match(prompt, /"seen_text"/);
+  assert.match(prompt, /THEIR NOTES \(the work itself is the attached image\):\nHere is my mock-up/);
+
+  const r = normalizeWork({
+    seen_text: 'New client checklist. Workspace access within two days.',
+    items: [
+      { id: 'R1', status: 'met', evidence: 'New client checklist' },
+      { id: 'R3', status: 'met', evidence: 'access within two days' },
+      { id: 'R2', status: 'not_met', evidence: 'one page only', fix: 'Fit it on one page.' }
+    ]
+  }, assignment, 'Here is my mock-up', { hasImage: true });
+  assert.equal(r.items[0].evidence, 'New client checklist');
+  assert.equal(r.items[2].evidence, 'access within two days');
+  assert.equal(r.items[1].evidence, '', 'not in the picture: dropped');
+});
+
+test('images are recognised by what they are, not their name', () => {
+  const { imageOf, sniffImage } = require('../services/fileParser');
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(16)]);
+  const jpg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(16)]);
+  assert.equal(sniffImage(png), 'image/png');
+  assert.equal(imageOf({ originalname: 'Shot.PNG', buffer: png }).mimetype, 'image/png');
+  assert.equal(imageOf({ originalname: 'photo.jpeg', buffer: jpg }).mimetype, 'image/jpeg');
+  assert.equal(imageOf({ originalname: 'draft.docx', buffer: png }), null, 'not named as an image: treated as a document');
+  assert.throws(() => imageOf({ originalname: 'fake.png', buffer: Buffer.from('<html>not an image</html>') }), /isn't a readable/);
+});
+
 test('checking work: skipped requirements are unclear, and evidence must really be in the work', () => {
   const work = 'Client checklist. Workspace access is set up within two days of signing.';
   const r = normalizeWork({

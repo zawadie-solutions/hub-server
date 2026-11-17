@@ -11,7 +11,7 @@ const multer = require('multer');
 const store = require('../data/store');
 const workActions = require('../services/workActions');
 const statementService = require('../services/statementService');
-const { extractText, SUPPORTED } = require('../services/fileParser');
+const { extractText, imageOf, WORK_SUPPORTED } = require('../services/fileParser');
 const workStore = require('../data/workStore');
 const people = require('../data/people');
 const admins = require('../data/admins');
@@ -315,18 +315,22 @@ router.post('/:id/check', upload.single('file'), async (req, res) => {
 
     let workText = String(req.body.text || '').trim();
     let source = 'What you wrote';
+    let image = null;
     if (req.file) {
       try {
-        workText = await extractText(req.file);
+        // An image is looked at as it is, with any text they typed as notes
+        // about it; a document's text replaces what they typed.
+        image = imageOf(req.file);
+        if (!image) workText = await extractText(req.file);
       } catch (err) {
-        return res.status(400).json({ success: false, error: `Couldn't read that file. Use one of: ${SUPPORTED.join(', ')}.` });
+        return res.status(400).json({ success: false, error: `Couldn't read that file (${err.message}). Use one of: ${WORK_SUPPORTED.join(', ')}.` });
       }
       source = req.file.originalname;
     }
-    if (!workText) return res.status(400).json({ success: false, error: 'Add your draft, or describe what you did.' });
+    if (!workText && !image) return res.status(400).json({ success: false, error: 'Add your draft or a picture of it, or describe what you did.' });
 
     try {
-      res.json({ success: true, data: (await workActions.checkWork(assignment, workText, source)).assignment });
+      res.json({ success: true, data: (await workActions.checkWork(assignment, workText, source, image)).assignment });
     } catch (err) {
       console.error('⚠️ Work check failed:', err.message);
       res.status(502).json({ success: false, error: AI_UNAVAILABLE });

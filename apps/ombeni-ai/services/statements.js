@@ -253,7 +253,7 @@ function slackMessage(assignment, link, { interactive = false } = {}) {
           { type: 'button', action_id: 'ombeni_open', text: { type: 'plain_text', text: 'Open in Ombeni' }, url: link }
         ]
       },
-      { type: 'context', elements: [{ type: 'mrkdwn', text: '*Reply in this thread:* say in your own words what you\'ll deliver and I\'ll check you\'ve got it all  ·  end with *?* to ask about it  ·  attach your draft to check it before you deliver.' }] }
+      { type: 'context', elements: [{ type: 'mrkdwn', text: '*Reply in this thread:* say in your own words what you\'ll deliver and I\'ll check you\'ve got it all  ·  end with *?* to ask about it  ·  attach your draft or a screenshot to check it before you deliver.' }] }
     ] : [
       {
         type: 'actions',
