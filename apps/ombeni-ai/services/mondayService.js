@@ -25,7 +25,8 @@ async function mondayRequest(query, variables, token) {
   });
   const result = await response.json();
   if (result.errors) {
-    const err = new Error(result.errors.map(e => e.message).join('; '));
+    // Monday repeats an error once per item (e.g. per board): say each once.
+    const err = new Error([...new Set(result.errors.map(e => e.message))].join('; '));
     err.mondayErrors = result.errors;
     throw err;
   }
@@ -51,12 +52,16 @@ async function listPeople() {
 
 // ---- One person's boards and tasks (their own access) ----
 
-/** The regular boards this person can open in Monday: [{ id, name, workspace }]. */
+/**
+ * The regular boards this person can open in Monday: [{ id, name, workspace }].
+ * The workspace name isn't asked for: Monday needs an extra permission
+ * (workspaces:read) for it, beyond boards:read.
+ */
 async function listMyBoards(token) {
-  const data = await mondayRequest(`query { boards (limit: 500, state: active) { id name type workspace { name } } }`, {}, token);
+  const data = await mondayRequest(`query { boards (limit: 500, state: active) { id name type } }`, {}, token);
   return (data.boards || [])
     .filter(b => b.type === 'board')
-    .map(b => ({ id: String(b.id), name: b.name, workspace: b.workspace ? b.workspace.name : null }))
+    .map(b => ({ id: String(b.id), name: b.name, workspace: null }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
