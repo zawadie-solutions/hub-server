@@ -14,6 +14,7 @@ const statementService = require('../services/statementService');
 const { extractText, SUPPORTED } = require('../services/fileParser');
 const workStore = require('../data/workStore');
 const people = require('../data/people');
+const admins = require('../data/admins');
 const mondayService = require('../services/mondayService');
 const { askAboutAssignment } = require('../services/openaiService');
 const { mondayUpdateText } = require('../services/statements');
@@ -186,8 +187,15 @@ const sampling = new Set();
 // most recent recorded meeting, and sends it to their Slack like a real one,
 // so they can try the buttons and thread replies. Their own work from that
 // meeting is used if there is any; otherwise the most detailed one.
+// Admins only: it's for testing Slack and showing people how Ombeni works, not
+// part of everyone's day. The sample is still only ever for the admin asking.
 router.post('/sample', async (req, res) => {
   const email = me(req);
+  try {
+    if (!(await admins.isAdmin(email))) return res.status(403).json({ success: false, error: 'Only Ombeni admins can send samples.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
   if (sampling.has(email)) return res.status(409).json({ success: false, error: 'A sample is already on its way.' });
   sampling.add(email);
   try {

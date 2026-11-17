@@ -195,6 +195,12 @@ test('samples: made for the person asking, from their own latest meeting, sent t
   };
   statementService.notifyOwner = async (a) => ({ status: 'sent', channel: 'D1', ts: '1.2', for: a.ownerEmail });
   meetings[0].transcriptEntries = [{ speaker: 'Kit', at: 1, text: 'hello' }];
+  require('../data/admins').isAdmin = async (email) => [KIT, TYLER].includes(email);
+
+  // Admins only: Astrid isn't one, so she's refused before anything is written.
+  const refused = await call(ASTRID, 'POST', '/work/sample');
+  assert.equal(refused.status, 403);
+  assert.deepEqual(written, []);
 
   // Tyler only attended m2, which has no transcript.
   assert.equal((await call(TYLER, 'POST', '/work/sample')).status, 404);

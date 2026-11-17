@@ -1466,9 +1466,9 @@ async function refreshCoworkerSettings() {
       ${toggle('prep', 'Notes before meetings', 'About 30 minutes before each meeting: what happened last time, what\'s still open, and what to ask.')}
     </div>
     ${c.slackReady ? '' : '<div class="work-note">Slack isn\'t connected on the server yet, so nothing can be sent.</div>'}
-    <div class="coworker-try">
+    <div class="coworker-try" ${state.isAdmin ? '' : 'hidden'}>
       <div>
-        <b>Try it in Slack</b>
+        <b>Try it in Slack</b> <span class="tag tag-gold">Admin only</span>
         <span class="work-note" style="display:block;margin-top:2px;">Ombeni makes a sample assignment from your latest recorded meeting and sends it to your Slack DM, like a real one. Press its buttons and reply in its thread to try everything. Delete it from My Work when you're done.</span>
       </div>
       <button class="btn btn-secondary btn-sm" id="sendSampleBtn">Send me a sample</button>
@@ -1484,7 +1484,7 @@ async function refreshCoworkerSettings() {
     }
   }));
   const sampleBtn = document.getElementById('sendSampleBtn');
-  sampleBtn.addEventListener('click', async () => {
+  if (state.isAdmin) sampleBtn.addEventListener('click', async () => {
     const result = document.getElementById('sampleResult');
     sampleBtn.disabled = true;
     sampleBtn.textContent = 'Making your sample…';
