@@ -97,38 +97,51 @@ function normalizeExplain(raw, assignment) {
 
 // ---- Check my work ----
 
-function workPrompt(assignment, workText) {
+/**
+ * hasImage: the work is an attached image (screenshot, photo, design), with
+ * workText as any notes they added. The AI first writes down the text it can
+ * see in the image (seen_text), so evidence can still be checked word for word.
+ */
+function workPrompt(assignment, workText, { hasImage = false } = {}) {
   const reqs = requirementsFor(assignment, { forWork: true });
+  const intro = hasImage
+    ? `What they gave you is an IMAGE of the work (a screenshot, a photo, a design or mock-up), attached
+below, plus any notes they wrote. Look at the image carefully: its text, layout, visuals and anything
+missing. First copy every piece of text you can read in the image into "seen_text".`
+    : `What they gave you is either the work itself (a document) or their description of what they did.`;
   return `A Zawadie employee is about to deliver this work, from the meeting "${assignment.meetingTitle}". Check it
-against what was asked, requirement by requirement, before it goes out. What they gave you is either
-the work itself (a document) or their description of what they did.
+against what was asked, requirement by requirement, before it goes out. ${intro}
 
 For each requirement:
 - "Must NOT do" requirements: "met" if the work respects it, "not_met" if the work does that thing.
 - Every other requirement: "met" if the work clearly satisfies it, "not_met" if it clearly doesn't or
   it's missing, "unclear" if you can't tell from what you were given.
-- evidence: the exact words from THE WORK that show it (copy them word for word, short), or "" if none.
+- evidence: the exact words from THE WORK that show it (copy them word for word, short), or "" if none.${hasImage ? `
+  For an image, copy the words from what you put in seen_text. If it's shown visually rather than in
+  words, leave evidence "" and say what you see in fix only when it's not met.` : ''}
 - fix: for "not_met" or "unclear", one short, specific sentence written TO the person ("Add ...",
   "Your draft doesn't show ..."). "" for "met".
-Judge only from the work below. Never assume something was done.
+Judge only from the work ${hasImage ? 'in the image and notes' : 'below'}. Never assume something was done.
 
 Return strictly valid JSON:
-{ "items": [{ "id": "R1", "status": "met|not_met|unclear", "evidence": "...", "fix": "..." }] }
+{ ${hasImage ? '"seen_text": "...", ' : ''}"items": [{ "id": "R1", "status": "met|not_met|unclear", "evidence": "...", "fix": "..." }] }
 
 REQUIREMENTS:
 ${requirementLines(reqs)}
 
-THE WORK:
-${String(workText || '').slice(0, MAX_WORK_CHARS)}`;
+${hasImage ? 'THEIR NOTES (the work itself is the attached image):' : 'THE WORK:'}
+${String(workText || (hasImage ? '(no notes)' : '')).slice(0, MAX_WORK_CHARS)}`;
 }
 
 /**
  * Every requirement gets a verdict; one the AI skipped is "unclear". Evidence
  * is shown as words from their work, so it's dropped unless it's really there.
  */
-function normalizeWork(raw, assignment, workText) {
+function normalizeWork(raw, assignment, workText, { hasImage = false } = {}) {
   const reqs = requirementsFor(assignment, { forWork: true });
-  const workWords = ` ${words(workText)} `;
+  // For an image, the text the AI read off it counts as the work's words.
+  const seen = hasImage ? str(raw && raw.seen_text, MAX_WORK_CHARS) : '';
+  const workWords = ` ${words(`${workText || ''} ${seen}`)} `;
   const byId = new Map((Array.isArray(raw && raw.items) ? raw.items : []).filter(i => i && i.id).map(i => [String(i.id).trim(), i]));
   const items = reqs.map(r => {
     const got = byId.get(r.id) || {};

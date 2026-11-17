@@ -14,7 +14,7 @@ const slackService = require('./slackService');
 const workActions = require('./workActions');
 const statementService = require('./statementService');
 const openaiService = require('./openaiService');
-const { extractText, SUPPORTED } = require('./fileParser');
+const { extractText, imageOf, WORK_SUPPORTED } = require('./fileParser');
 const replies = require('./slackReplies');
 
 const MAX_AGE_S = 5 * 60;
@@ -112,16 +112,20 @@ async function respondAbout(assignment, event, reply) {
   const file = (event.files || [])[0];
   if (file) {
     const ext = path.extname(file.name || '').toLowerCase();
-    if (!SUPPORTED.includes(ext)) return reply(replies.plain(`I can check ${SUPPORTED.join(', ')} files. For anything else, paste the text or describe what you did, in My Work.`));
+    if (!WORK_SUPPORTED.includes(ext)) return reply(replies.plain(`I can check ${WORK_SUPPORTED.join(', ')} files. For anything else, paste the text or describe what you did, in My Work.`));
     let text;
+    let image = null;
     try {
-      text = await extractText({ originalname: file.name, buffer: await slackService.downloadFile(file) });
+      const buffer = await slackService.downloadFile(file);
+      // A picture is looked at as it is, with anything typed alongside as notes.
+      image = imageOf({ originalname: file.name, buffer });
+      text = image ? replies.cleanSlackText(event.text) : await extractText({ originalname: file.name, buffer });
     } catch (err) {
       return reply(replies.plain(`I couldn't read that file: ${err.message}.`));
     }
-    if (!text) return reply(replies.plain('That file looks empty to me.'));
+    if (!text && !image) return reply(replies.plain('That file looks empty to me.'));
     try {
-      const { check } = await workActions.checkWork(assignment, text, file.name);
+      const { check } = await workActions.checkWork(assignment, text, file.name, image);
       return reply(replies.workReply(check));
     } catch (err) {
       console.error('⚠️ Slack work check failed:', err.message);

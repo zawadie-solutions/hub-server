@@ -32,7 +32,8 @@ slackService.emailOfUser = async (id) => users[id] || null;
 slackService.downloadFile = async () => Buffer.from('My draft: one page, Google Doc, Workspace access within 2 days.');
 const calls = { explain: [], work: [], ask: [] };
 checkService.checkExplanation = async (a, text) => { calls.explain.push(text); return { items: [], extra: [], ready: /everything/.test(text) }; };
-checkService.checkWork = async (a, text) => { calls.work.push(text); return { items: [{ id: 'R1', kind: 'must', text: 'One page', status: 'not_met', evidence: '', fix: 'Cut it to one page.' }], ready: false, truncated: false }; };
+calls.images = [];
+checkService.checkWork = async (a, text, image) => { calls.work.push(text); calls.images.push(image || null); return { items: [{ id: 'R1', kind: 'must', text: 'One page', status: 'not_met', evidence: '', fix: 'Cut it to one page.' }], ready: false, truncated: false }; };
 openaiService.askAboutAssignment = async (a, m, messages) => { calls.ask.push(messages[0].content); return 'Tyler said: "keep it to one page" (12:41).'; };
 store.getMeeting = () => null;
 
@@ -137,9 +138,20 @@ test('an attached draft is checked; unsupported files are explained', async () =
   assert.match(posted.at(-1).text, /requirement\(s\) to fix.*draft\.txt.*Cut it to one page/);
   assert.equal((await workStore.getAssignment(assignment.id)).checks[0].source, 'draft.txt');
 
-  await send('slack-events', event(reply({ subtype: 'file_share', files: [{ name: 'photo.png', size: 100 }] })));
+  await send('slack-events', event(reply({ subtype: 'file_share', files: [{ name: 'clip.mp4', size: 100 }] })));
   await settle();
-  assert.match(posted.at(-1).text, /I can check \.txt/);
+  assert.match(posted.at(-1).text, /I can check \.txt.*\.png/);
+});
+
+test('a picture attached in the thread is checked by looking at it, with the message as notes', async () => {
+  const realDownload = slackService.downloadFile;
+  slackService.downloadFile = async () => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)]);
+  await send('slack-events', event(reply({ subtype: 'file_share', text: 'my mock-up', files: [{ name: 'screen.png', size: 100, url_private_download: 'https://files.slack.com/y' }] })));
+  await settle();
+  slackService.downloadFile = realDownload;
+  assert.equal(calls.images.at(-1).mimetype, 'image/png');
+  assert.equal(calls.work.at(-1), 'my mock-up');
+  assert.match(posted.at(-1).text, /screen\.png/);
 });
 
 test('someone else replying in the thread can\'t act on it or see anything', async () => {

@@ -46,9 +46,13 @@ async function explain(assignment, text) {
 
 const KEEP_CHECKS = 5;
 
-/** Check my work. Only the result is kept, never the work. Throws if the AI is unavailable. */
-async function checkWork(assignment, workText, source) {
-  const result = await checkService.checkWork(assignment, workText);
+/**
+ * Check my work. image: { buffer, mimetype } when the work is an image (then
+ * workText is any notes about it). Only the result is kept, never the work.
+ * Throws if the AI is unavailable.
+ */
+async function checkWork(assignment, workText, source, image = null) {
+  const result = await checkService.checkWork(assignment, workText, image);
   const check = { at: now(), source: String(source || 'What you wrote').slice(0, 200), result };
   const saved = await workStore.saveAssignment({ ...assignment, checks: [check, ...(assignment.checks || [])].slice(0, KEEP_CHECKS) });
   return { assignment: saved, check };

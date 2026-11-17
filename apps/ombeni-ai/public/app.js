@@ -1068,10 +1068,10 @@ function checkPanel(a) {
   return `
     <div class="work-panel">
       <div class="work-panel-title">Check my work</div>
-      <div class="work-note" style="margin:0 0 8px;">Before you deliver: upload your draft (.docx, .pdf, .txt, .md), paste it, or describe what you did. Ombeni checks it against every requirement. Your work itself isn't saved, only the result.</div>
-      <textarea data-check-input="${a.id}" rows="4" placeholder="Paste your draft, or describe what you did..."></textarea>
+      <div class="work-note" style="margin:0 0 8px;">Before you deliver: upload your draft (.docx, .pdf, .txt, .md) or a picture of it (a screenshot, photo or design: .png, .jpg, .webp, .gif), paste it, or describe what you did. With a picture, anything you type below is read as notes about it. Ombeni checks it against every requirement. Your work itself isn't saved, only the result.</div>
+      <textarea data-check-input="${a.id}" rows="4" placeholder="Paste your draft, or describe what you did. With a picture: any notes about it..."></textarea>
       <div class="work-actions" style="margin-top:8px;">
-        <input type="file" data-check-file="${a.id}" accept=".txt,.md,.docx,.pdf">
+        <input type="file" data-check-file="${a.id}" accept=".txt,.md,.docx,.pdf,.png,.jpg,.jpeg,.webp,.gif">
         <button class="btn btn-primary btn-sm" data-act="check-send" data-id="${a.id}">Check it</button>
       </div>
       ${r ? `

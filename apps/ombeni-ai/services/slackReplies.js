@@ -44,7 +44,7 @@ const plain = (text) => ({ text, blocks: [section(esc(text))] });
 
 const HELP = (link) => ({
   text: 'Reply under an assignment',
-  blocks: [section(`I answer in the thread under each assignment I send you: explain what you'll deliver, ask a question (end with *?*), or attach your draft to check it.\nAll your work is in <${link}|My Work>.`)]
+  blocks: [section(`I answer in the thread under each assignment I send you: explain what you'll deliver, ask a question (end with *?*), or attach your draft or a picture of it to check it.\nAll your work is in <${link}|My Work>.`)]
 });
 
 /** Slack's message text, back to what the person typed. */

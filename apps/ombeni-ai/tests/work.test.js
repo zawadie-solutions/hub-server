@@ -42,7 +42,8 @@ openaiService.askAboutAssignment = async () => 'From the meeting: two pages.';
 const checkService = require('../services/checkService');
 const checkedWork = [];
 checkService.checkExplanation = async (a, text) => ({ items: [], extra: [], ready: /everything/.test(text) });
-checkService.checkWork = async (a, text) => { checkedWork.push(text); return { items: [], ready: true, truncated: false }; };
+const checkedImages = [];
+checkService.checkWork = async (a, text, image) => { checkedWork.push(text); checkedImages.push(image || null); return { items: [], ready: true, truncated: false }; };
 
 const statement = { outcome: 'x', mustHaves: [], avoid: [], due: null, dueSaid: null, deliverTo: null, unclear: [] };
 let kitTask, tylerTask, unassignedM1, unassignedM2;
@@ -170,6 +171,22 @@ test('checking work: pasted text or an uploaded file, owner only, last 5 results
   assert.equal(saved.checks.length, 5);
   assert.equal(saved.checks[0].source, 'What you wrote');
   assert.doesNotMatch(JSON.stringify(saved), /SECRET DRAFT CONTENTS|draft 5/);
+});
+
+test('checking work: a picture is sent to be looked at, with what was typed as notes', async () => {
+  const a = await workStore.saveAssignment({ meetingId: 'm1', meetingTitle: 'Kenect sync', ownerEmail: KIT, title: 'Picture check', statement, status: 'confirmed', declinedBy: [] });
+  const form = new FormData();
+  form.append('file', new Blob([Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)])]), 'mockup.png');
+  form.append('text', 'This is the home page design');
+  const res = await fetch(`${base}/work/${a.id}/check`, { method: 'POST', headers: { 'x-test-user': KIT }, body: form }).then(r => r.json());
+  assert.equal(res.data.checks[0].source, 'mockup.png');
+  assert.equal(checkedImages.at(-1).mimetype, 'image/png');
+  assert.equal(checkedWork.at(-1), 'This is the home page design');
+  assert.doesNotMatch(JSON.stringify(await workStore.getAssignment(a.id)), /iVBOR|base64/, 'the picture itself is not stored');
+
+  const fake = new FormData();
+  fake.append('file', new Blob(['<html>not an image</html>']), 'fake.png');
+  assert.equal((await fetch(`${base}/work/${a.id}/check`, { method: 'POST', headers: { 'x-test-user': KIT }, body: fake })).status, 400);
 });
 
 test('handing work back clears the explanation and checks, so the next person never sees them', async () => {
