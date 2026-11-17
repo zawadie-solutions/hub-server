@@ -986,9 +986,11 @@ function statementHtml(a) {
 
 function mondayControls(a) {
   if (a.monday) return `<span class="tag tag-green">On Monday.com: ${escapeHtml(a.monday.boardName)}</span>`;
-  if (a.status === 'done' || !state.work.mondayConnected) return '';
+  if (a.status === 'done') return '';
+  // Tasks go to Monday as the person, on their own board, so they connect their own Monday first.
+  if (!state.work.mondayConnected) return '<a class="btn btn-ghost btn-sm" href="auth/monday">Connect Monday to send this</a>';
   if (!state.workBoards) return `<button class="btn btn-ghost btn-sm" data-act="load-boards" data-id="${a.id}">Send to Monday.com…</button>`;
-  if (!state.workBoards.length) return `<span class="work-note">You're not a member of any Monday.com board Ombeni can see.</span>`;
+  if (!state.workBoards.length) return `<span class="work-note">Your Monday account has no boards to send to.</span>`;
   return `
     <select data-board-for="${a.id}">
       ${state.workBoards.map(b => `<option value="${escapeHtml(b.id)}">${escapeHtml(b.name)}${b.workspace ? ` (${escapeHtml(b.workspace)})` : ''}</option>`).join('')}
@@ -1452,6 +1454,19 @@ async function refreshCoworkerSettings() {
       </div>`;
   }
 
+  let monday = '';
+  if (c.mondayReady) {
+    monday = c.monday && c.monday.connected
+      ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px;">
+          <div class="muted">Monday connected as ${escapeHtml(c.monday.name || 'you')}: you send work to your own boards. Nothing goes to Monday on its own.</div>
+          <button class="btn btn-ghost btn-sm" id="disconnectMondayBtn">Disconnect Monday</button>
+        </div>`
+      : `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px;">
+          <div class="muted">${c.monday && c.monday.broken ? 'Your Monday connection stopped working. Connect again to send work to your boards.' : 'Connect your Monday account to send work to your own boards, as you. Nothing goes to Monday on its own.'}</div>
+          <a class="btn btn-secondary btn-sm" href="auth/monday">${c.monday && c.monday.broken ? 'Reconnect Monday' : 'Connect Monday'}</a>
+        </div>`;
+  }
+
   const toggle = (name, label, hint) => `
     <label class="coworker-toggle">
       <input type="checkbox" data-coworker-pref="${name}" ${c.prefs[name] ? 'checked' : ''}>
@@ -1461,6 +1476,7 @@ async function refreshCoworkerSettings() {
   box.innerHTML = `
     <div class="muted" style="margin-bottom:12px;">Ombeni sends these to your Slack DM. They're built only from your calendar, the meetings you attended, and your own work. Nobody else sees them.</div>
     ${google}
+    ${monday}
     <div style="margin-top:14px;display:flex;flex-direction:column;gap:12px;">
       ${toggle('morning', 'Morning message', 'Weekdays at 7:30 your time: today\'s meetings, and work that\'s due, new or needs fixing.')}
       ${toggle('prep', 'Notes before meetings', 'About 30 minutes before each meeting: what happened last time, what\'s still open, and what to ask.')}
@@ -1502,6 +1518,14 @@ async function refreshCoworkerSettings() {
     sampleBtn.textContent = 'Send me a sample';
   });
 
+  const disconnectMonday = document.getElementById('disconnectMondayBtn');
+  if (disconnectMonday) disconnectMonday.addEventListener('click', async () => {
+    if (!confirm('Disconnect Monday? Ombeni deletes its stored access, and you can\'t send work to your boards until you connect again.')) return;
+    await api('/me/monday', { method: 'DELETE' });
+    state.workBoards = null;
+    refreshSettings();
+  });
+
   const disconnect = document.getElementById('disconnectGoogleBtn');
   if (disconnect) disconnect.addEventListener('click', async () => {
     if (!confirm('Disconnect Google? Ombeni stops reading your calendar and deletes its stored access.')) return;
@@ -1516,7 +1540,7 @@ async function refreshSettings() {
   const status = await loadStatus();
   const rows = [
     ['OpenAI', status.openai, 'Powers meeting analysis and Ask Ombeni.'],
-    ['Monday.com', status.monday, status.monday ? 'Connected. You send your own work to your own boards from My Work.' : 'Not connected yet. Set MONDAY_API_KEY and MONDAY_BOARD_ID to send work to Monday.com.'],
+    ['Monday.com', status.monday, status.monday ? 'Ready. Each person connects their own Monday account in Your co-worker above, and sends work to their own boards. Nothing is sent automatically.' : 'Not set up yet. An admin needs to add OMBENI_MONDAY_CLIENT_ID and OMBENI_MONDAY_CLIENT_SECRET on the server.'],
     ['Monday Notetaker', status.notetaker, status.notetaker ? 'Meetings are pulled live from your recorded Notetaker calls.' : 'Not active — showing demo meeting data instead of real recordings.'],
     ['Slack', status.slack, status.slack ? 'Connected — Ombeni AI can post notifications.' : 'Not connected yet — set SLACK_BOT_TOKEN and SLACK_CHANNEL to enable notifications.'],
     [
@@ -1554,14 +1578,6 @@ async function refreshSettings() {
     section.hidden = true;
   }
 
-  const mondayBoardSection = document.getElementById('mondayBoardSection');
-  if (state.isAdmin) {
-    mondayBoardSection.hidden = false;
-    await refreshMondayBoardSettings();
-  } else {
-    mondayBoardSection.hidden = true;
-  }
-
   const adminsSection = document.getElementById('adminsSection');
   if (state.isAdmin) {
     adminsSection.hidden = false;
@@ -1570,45 +1586,6 @@ async function refreshSettings() {
     adminsSection.hidden = true;
   }
 }
-
-async function refreshMondayBoardSettings() {
-  const select = document.getElementById('mondayBoardSelect');
-  const meta = document.getElementById('mondayBoardMeta');
-  try {
-    const { data } = await api('/settings/monday-board');
-    if (!data.boards.length) {
-      select.innerHTML = '<option value="">Monday.com not connected</option>';
-      select.disabled = true;
-      meta.textContent = 'Set MONDAY_API_KEY on the server to choose a board here.';
-      return;
-    }
-    select.disabled = false;
-    select.innerHTML = '<option value="">Use the shared board</option>' + data.boards.map(b =>
-      `<option value="${escapeHtml(b.id)}" ${String(b.id) === String(data.boardId) ? 'selected' : ''}>${escapeHtml(b.name)}</option>`
-    ).join('');
-    meta.textContent = data.boardId
-      ? `Your tasks go to board id ${data.boardId}.`
-      : data.sharedBoardId
-        ? `Your tasks go to the shared board (id ${data.sharedBoardId}).`
-        : 'No board selected yet — tasks will be stored as "pending sync" until one is chosen.';
-  } catch (err) {
-    meta.textContent = `Couldn't load boards: ${err.message}`;
-  }
-}
-
-document.getElementById('saveMondayBoardBtn').addEventListener('click', async (e) => {
-  const boardId = document.getElementById('mondayBoardSelect').value;
-  e.target.disabled = true;
-  e.target.textContent = 'Saving…';
-  try {
-    await api('/settings/monday-board', { method: 'PUT', body: JSON.stringify({ boardId }) });
-    await refreshMondayBoardSettings();
-  } catch (err) {
-    alert(`Couldn't save: ${err.message}`);
-  }
-  e.target.disabled = false;
-  e.target.textContent = 'Save';
-});
 
 async function refreshAdminsList() {
   const { data } = await api('/admins');
@@ -1764,7 +1741,11 @@ initAuth().then(signedIn => {
   // Slack messages link to My Work (<app>/#work) or straight to one
   // assignment (<app>/#work/<id>).
   const workLink = window.location.hash.match(/^#work(?:\/([\w-]+))?$/);
-  if (workLink) {
+  if (window.location.hash === '#settings') {
+    // Back from Connect Monday.
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+    goToView('settings');
+  } else if (workLink) {
     state.workFocusId = workLink[1] || null;
     history.replaceState(null, '', window.location.pathname + window.location.search);
     goToView('work');

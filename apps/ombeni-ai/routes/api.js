@@ -7,12 +7,12 @@ const store = require('../data/store');
 const knowledgeStore = require('../data/knowledgeStore');
 const systemInstructions = require('../data/systemInstructions');
 const admins = require('../data/admins');
-const adminBoards = require('../data/adminBoards');
+const mondayAuth = require('../services/mondayAuth');
+const myMonday = require('../services/myMonday');
 const { processMeetingAnalysis, handleChat, writeRecapEmail } = require('../services/openaiService');
 const gmailService = require('../services/gmailService');
 const workStore = require('../data/workStore');
 const { isCompanyEmail } = require('../services/meetingKind');
-const mondayService = require('../services/mondayService');
 const slackService = require('../services/slackService');
 const authService = require('../services/authService');
 const calendarService = require('../services/calendarService');
@@ -28,7 +28,7 @@ router.get('/status', (req, res) => {
     success: true,
     data: {
       openai: env.isOpenAIConfigured,
-      monday: mondayService.isConfigured(),
+      monday: mondayAuth.isConfigured(),
       slack: slackService.isConfigured(),
       google: authService.isConfigured(),
       notetaker: store.isUsingNotetaker()
@@ -369,7 +369,9 @@ router.post('/chat', async (req, res) => {
       calendarEvents,
       // What people ask Ombeni, and the tasks they create through it, are
       // theirs: none of it goes in the admins' Activity log.
-      taskBoardId: await adminBoards.boardForAdmin(currentEmail(req)),
+      // Monday tasks: only for people who connected their own Monday, on a
+      // board they named.
+      mondayTask: (await mondayAuth.tokenFor(currentEmail(req))) ? (args) => myMonday.createMyTask(currentEmail(req), args) : null,
       // Drafts in their own Gmail, only if they allowed it.
       draftEmail: authService.canDraftEmail(req.appSession.googleTokens)
         ? (email) => gmailService.createDraft(req.appSession.googleTokens, { to: email.to || [], subject: email.subject, body: email.body })
@@ -404,33 +406,6 @@ router.put('/system-instructions', requireAdmin, (req, res) => {
   const data = systemInstructions.set(req.body.body || '', req.appSession.user.name);
   store.logActivity({ user: req.appSession.user.name, action: 'Updated Ombeni AI system instructions', source: 'Settings' });
   res.json({ success: true, data });
-});
-
-// --- Monday.com task board (admin only) --------------------------------------
-
-// Each admin picks their own board here, which never changes anyone else's.
-// Everyone else's tasks use the shared board.
-router.get('/settings/monday-board', requireAdmin, async (req, res) => {
-  try {
-    const [boards, boardId] = await Promise.all([mondayService.listBoards(), adminBoards.boardForAdmin(currentEmail(req))]);
-    res.json({ success: true, data: { boardId, sharedBoardId: mondayService.getBoardId() || null, boards } });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-router.put('/settings/monday-board', requireAdmin, async (req, res) => {
-  try {
-    const boardId = await adminBoards.setBoardForAdmin(currentEmail(req), req.body.boardId);
-    store.logActivity({
-      user: req.appSession.user.name,
-      action: boardId ? `Set their own Monday.com task board (board id ${boardId})` : 'Went back to the shared Monday.com task board',
-      source: 'Monday.com'
-    });
-    res.json({ success: true, data: { boardId, sharedBoardId: mondayService.getBoardId() || null } });
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
-  }
 });
 
 // --- Admin management (admin only) -------------------------------------------

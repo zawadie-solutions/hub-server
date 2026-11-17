@@ -33,7 +33,9 @@ store.getMeeting = (id) => meetings.find(m => m.id === id);
 
 // Monday stand-ins: Kit is a member of board 1 only.
 const created = [];
-mondayService.listBoardsFor = async (email) => (email === KIT ? [{ id: '1', name: 'Kit board', workspace: null }] : []);
+// Kit connected Monday; only Kit's own access can see board 1.
+require('../services/mondayAuth').tokenFor = async (email) => (email === KIT ? 'kit-token' : null);
+mondayService.listMyBoards = async (token) => (token === 'kit-token' ? [{ id: '1', name: 'Kit board', workspace: null }] : []);
 mondayService.createTask = async (args) => { created.push(args); return { created: true, itemId: '999' }; };
 mondayService.addUpdate = async () => ({ id: 'u1' });
 openaiService.askAboutAssignment = async () => 'From the meeting: two pages.';
@@ -122,7 +124,7 @@ test('work goes to Monday only on the person\'s own board, and only once', async
   assert.equal(res.status, 200);
   assert.equal(res.body.data.monday.boardName, 'Kit board');
   assert.equal(created.length, 1);
-  assert.equal(created[0].ownerEmail, KIT);
+  assert.equal(created[0].token, 'kit-token', 'created as Kit, with Kit\'s own Monday access');
   assert.equal((await call(KIT, 'POST', `/work/${kitTask.id}/monday`, { boardId: '1' })).status, 409);
   assert.equal(created.length, 1);
 });

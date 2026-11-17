@@ -3,6 +3,7 @@
 const express = require('express');
 const env = require('../config/env');
 const people = require('../data/people');
+const mondayAuth = require('../services/mondayAuth');
 
 const router = express.Router();
 const me = (req) => (req.appSession.user ? req.appSession.user.email.toLowerCase() : null);
@@ -16,6 +17,8 @@ function view(person) {
   const google = person && person.google;
   return {
     google: google ? { connected: !google.broken, broken: Boolean(google.broken), connectedAt: google.connectedAt, gmailDrafts: (google.scopes || []).some(s => /gmail\.compose/.test(s)) } : null,
+    monday: person && person.monday ? { connected: !person.monday.broken, broken: Boolean(person.monday.broken), name: person.monday.name, connectedAt: person.monday.connectedAt } : null,
+    mondayReady: mondayAuth.isConfigured(),
     canStore: people.canStoreTokens(),
     slackReady: env.isSlackDmConfigured,
     timeZone: (person && person.timeZone) || null,
@@ -54,6 +57,15 @@ router.delete('/google', async (req, res) => {
     }
     delete req.appSession.googleTokens;
     res.json({ success: true, data: view(await people.forgetGoogle(me(req))) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Disconnect Monday: the access is cancelled at Monday where it can be, and the stored copy deleted.
+router.delete('/monday', async (req, res) => {
+  try {
+    res.json({ success: true, data: view(await mondayAuth.disconnect(me(req))) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

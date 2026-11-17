@@ -2,7 +2,6 @@ const OpenAI = require('openai');
 const env = require('../config/env');
 const knowledgeStore = require('../data/knowledgeStore');
 const systemInstructions = require('../data/systemInstructions');
-const mondayService = require('../services/mondayService');
 const { transcriptText, mondayUpdateText } = require('./statements');
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
@@ -11,15 +10,18 @@ const MODEL = 'gpt-4o';
 const OMBENI_IDENTITY = `You are Ombeni AI, the internal company AI assistant for Zawadie Solutions.
 You have access to: (1) Zawadie's company knowledge base, (2) transcripts and summaries of the company's
 recorded meetings, (3) the ability to reference Monday.com tasks and Slack activity when that context
-is provided to you, and (4) the ability to create new tasks directly on Zawadie's Monday.com board via
-the create_monday_task tool. You help employees at every level get answers, recommendations, and status
-updates across all of this.
+is provided to you, and (4) when the person has connected their own Monday account, the ability to create
+a task on one of THEIR OWN Monday boards via the create_monday_task tool. You help employees at every level
+get answers, recommendations, and status updates across all of this.
 
-Whenever someone asks you to add, create, log, or file a task / to-do / action item (e.g. "add a task to
-follow up with the client", "create a Monday task for Tyler due Friday"), call create_monday_task rather
-than just describing what you would do — pull the task description, and owner/due date/priority if they're
-mentioned, straight from their message. Confirm briefly once it's done, or explain plainly if it failed
-(e.g. Monday.com isn't connected).
+Monday tasks are only ever created when the person asks, and only on a board they name. When someone asks
+you to add, create, log, or file a task / to-do / action item:
+- If the create_monday_task tool isn't available, say they need to connect their Monday account first
+  (Settings, Your co-worker, Connect Monday). Don't pretend a task was created.
+- If they haven't said which board, call create_monday_task without a board: it returns their own boards.
+  Then ask which one, and only create it once they've named one. Never choose a board for them.
+- Pull the task description, due date and priority straight from their message. Confirm briefly once it's
+  done (name the board), or explain plainly if it failed.
 
 When someone asks you to draft or write an email (a follow-up, a recap, a reply) and the draft_email tool is
 available, call it: it saves a draft in their own Gmail, it never sends. Then tell them it's in their Gmail
@@ -148,16 +150,19 @@ function calendarContext(calendarEvents) {
   return lines.join('\n');
 }
 
-const CHAT_TOOLS = [{
+// Only offered to people who connected their own Monday account. Creates the
+// task as them, on a board THEY named; without a board it returns their boards
+// so Ombeni can ask.
+const MONDAY_TASK_TOOL = {
   type: 'function',
   function: {
     name: 'create_monday_task',
-    description: 'Creates a new task/action item on Zawadie\'s configured Monday.com board. Call this any time the user asks you to add, create, log, or file a task, to-do, or action item.',
+    description: "Creates a task on one of the user's own Monday.com boards, as them. Only when they ask for a task. 'board' must be a board the user named; leave it out to get the list of their boards and ask which one.",
     parameters: {
       type: 'object',
       properties: {
         task: { type: 'string', description: 'The task description.' },
-        owner: { type: 'string', description: "The person's name to assign the task to, if one was mentioned." },
+        board: { type: 'string', description: 'The board name exactly as the user said it. Leave out if they did not name one.' },
         due: { type: 'string', description: 'Due date in YYYY-MM-DD format, if one was mentioned.' },
         priority: { type: 'string', enum: ['High', 'Medium', 'Low'], description: 'Priority, if mentioned or implied.' },
         project: { type: 'string', description: 'Project or context name, if one was mentioned.' }
@@ -165,7 +170,7 @@ const CHAT_TOOLS = [{
       required: ['task']
     }
   }
-}];
+};
 
 // Only offered to people who allowed Gmail drafts. Creates a DRAFT in their
 // own Gmail; nothing is ever sent.
@@ -186,7 +191,7 @@ const DRAFT_EMAIL_TOOL = {
   }
 };
 
-async function runTool(call, { onTaskCreated, taskBoardId, draftEmail }) {
+async function runTool(call, { mondayTask, draftEmail }) {
   if (call.function.name === 'draft_email' && draftEmail) {
     let args;
     try {
@@ -199,7 +204,7 @@ async function runTool(call, { onTaskCreated, taskBoardId, draftEmail }) {
       ? { success: true, message: `Draft saved in the user's Gmail (not sent). Link for the user: ${result.link}` }
       : { success: false, message: `Couldn't save the draft: ${result.reason}` };
   }
-  if (call.function.name !== 'create_monday_task') {
+  if (call.function.name !== 'create_monday_task' || !mondayTask) {
     return { success: false, message: 'Unknown tool' };
   }
 
@@ -210,31 +215,25 @@ async function runTool(call, { onTaskCreated, taskBoardId, draftEmail }) {
     return { success: false, message: 'Could not parse tool arguments' };
   }
 
-  // Set here rather than taken from the model's arguments, so what's said in a
-  // chat can't send a task to a board the person didn't choose.
-  const mondayResult = await mondayService.createTask({ ...args, boardId: taskBoardId });
-  if (onTaskCreated) onTaskCreated({ ...args, mondayResult });
-
-  if (mondayResult.created) {
-    return { success: true, message: `Task "${args.task}" was created in Monday.com.` };
+  const result = await mondayTask(args);
+  if (result.created) return { success: true, message: `Task "${args.task}" was created on the user's board "${result.boardName}".` };
+  if (result.boards) {
+    const why = args.board ? `No single board of theirs matches "${args.board}". ` : 'They have not said which board. ';
+    return { success: false, message: `${why}Ask which of their boards to use: ${result.boards.join(', ') || '(they have no boards)'}.` };
   }
-  const reason = mondayResult.reason === 'not_configured'
-    ? "Monday.com isn't connected yet."
-    : (mondayResult.error || 'Unknown error.');
-  return { success: false, message: `Couldn't create the task in Monday.com: ${reason}` };
+  return { success: false, message: `Couldn't create the task in Monday.com: ${result.error || 'unknown error'}` };
 }
 
 /**
  * General-purpose chat grounded in the Zawadie knowledge base, every recorded
- * meeting, and (when available) the user's calendar for today/tomorrow. Can
- * also create Monday.com tasks on request via the create_monday_task tool —
- * onTaskCreated, if given, is called once per task actually created (so the
- * caller can log it to the activity feed). taskBoardId, if given, is the board
- * those tasks go to (an admin's own); otherwise they use the shared one.
+ * meeting, and (when available) the user's calendar for today/tomorrow.
+ * mondayTask, if given (they connected Monday), creates a task on one of their
+ * own boards: ({ task, board, due, priority, project }) => { created, boardName }
+ * | { boards: [names] } | { error }. draftEmail, if given, saves a Gmail draft.
  * Returns { reply, sourcesUsed } where sourcesUsed lists which meetings were relevant.
  */
-async function handleChat(messages, { meetings = [], calendarEvents = null, onTaskCreated = null, taskBoardId = null, draftEmail = null } = {}) {
-  const tools = draftEmail ? [...CHAT_TOOLS, DRAFT_EMAIL_TOOL] : CHAT_TOOLS;
+async function handleChat(messages, { meetings = [], calendarEvents = null, mondayTask = null, draftEmail = null } = {}) {
+  const tools = [mondayTask ? MONDAY_TASK_TOOL : null, draftEmail ? DRAFT_EMAIL_TOOL : null].filter(Boolean);
   const customInstructions = systemInstructions.get().body.trim();
   const customBlock = customInstructions
     ? `\n\n=== ADDITIONAL INSTRUCTIONS FROM ZAWADIE LEADERSHIP ===\nThese refine your tone, behavior, and response format — follow them directly. They do not authorize inventing facts that aren't in the knowledge base or meetings below.\n${customInstructions}`
@@ -255,10 +254,12 @@ ${meetingsContext(meetings)}`
   };
 
   const conversation = [systemMessage, ...messages];
+  // OpenAI rejects an empty tool list, so it's left out when there are none.
+  const toolOptions = tools.length ? { tools } : {};
   let response = await openai.chat.completions.create({
     model: MODEL,
     messages: conversation,
-    tools
+    ...toolOptions
   });
   let choice = response.choices[0];
 
@@ -268,13 +269,13 @@ ${meetingsContext(meetings)}`
   while (choice.finish_reason === 'tool_calls' && choice.message.tool_calls) {
     conversation.push(choice.message);
     for (const call of choice.message.tool_calls) {
-      const result = await runTool(call, { onTaskCreated, taskBoardId, draftEmail });
+      const result = await runTool(call, { mondayTask, draftEmail });
       conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }
     response = await openai.chat.completions.create({
       model: MODEL,
       messages: conversation,
-      tools
+      ...toolOptions
     });
     choice = response.choices[0];
   }

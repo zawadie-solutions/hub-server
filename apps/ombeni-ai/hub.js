@@ -4,7 +4,6 @@
 async function createSolution() {
   process.env.OMBENI_IN_HUB = '1';
   await require('./data/admins').init();
-  await require('./data/adminBoards').init();
   await require('./data/workStore').init();
   await require('./data/people').init();
   return require('./server.js');
