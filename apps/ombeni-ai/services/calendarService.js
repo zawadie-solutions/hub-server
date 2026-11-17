@@ -22,6 +22,15 @@ async function getFreshAccessToken(googleTokens) {
  * (ISO strings). Returns a flat, normalized list — cancelled events dropped.
  */
 async function listEventsForRange(googleTokens, timeMinISO, timeMaxISO) {
+  return (await listEventsWithZone(googleTokens, timeMinISO, timeMaxISO)).events;
+}
+
+/**
+ * Like listEventsForRange, plus the calendar's own time zone (so a morning
+ * message goes out in the person's morning) and, per event, whether they
+ * declined it and who organized it.
+ */
+async function listEventsWithZone(googleTokens, timeMinISO, timeMaxISO) {
   const accessToken = await getFreshAccessToken(googleTokens);
 
   const params = new URLSearchParams({
@@ -40,17 +49,23 @@ async function listEventsForRange(googleTokens, timeMinISO, timeMaxISO) {
     throw new Error(data.error.message || 'Google Calendar API error');
   }
 
-  return (data.items || [])
+  const events = (data.items || [])
     .filter(e => e.status !== 'cancelled')
-    .map(e => ({
-      id: e.id,
-      title: e.summary || '(No title)',
-      start: e.start.dateTime || e.start.date,
-      end: e.end.dateTime || e.end.date,
-      isAllDay: !e.start.dateTime,
-      attendees: (e.attendees || []).map(a => (a.email || '').toLowerCase()).filter(Boolean),
-      htmlLink: e.htmlLink || null
-    }));
+    .map(e => {
+      const self = (e.attendees || []).find(a => a.self);
+      return {
+        id: e.id,
+        title: e.summary || '(No title)',
+        start: e.start.dateTime || e.start.date,
+        end: e.end.dateTime || e.end.date,
+        isAllDay: !e.start.dateTime,
+        attendees: (e.attendees || []).filter(a => !a.resource).map(a => (a.email || '').toLowerCase()).filter(Boolean),
+        declined: Boolean(self && self.responseStatus === 'declined'),
+        organizer: e.organizer && e.organizer.email ? e.organizer.email.toLowerCase() : null,
+        htmlLink: e.htmlLink || null
+      };
+    });
+  return { timeZone: data.timeZone || 'UTC', events };
 }
 
-module.exports = { listEventsForRange };
+module.exports = { listEventsForRange, listEventsWithZone };

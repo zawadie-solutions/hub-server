@@ -1,4 +1,5 @@
 const env = require('../config/env');
+const { classifyMeeting } = require('./meetingKind');
 
 const MONDAY_API_URL = 'https://api.monday.com/v2';
 
@@ -51,10 +52,7 @@ function normalizeMeeting(raw) {
     return first ? `${t.title}: ${first.content}` : t.title;
   });
 
-  // `id` is Notetaker's own stable id for the action item — kept (not just
-  // its content) so store.syncActionItemsToMonday can tell "already pushed to
-  // Monday" apart from "new" across refreshes, which rebuild this whole array
-  // from scratch every time.
+  // `id` is Notetaker's own stable id for the action item.
   const actionItems = (raw.action_items || []).map(ai => ({
     id: ai.id,
     task: ai.content,
@@ -67,10 +65,20 @@ function normalizeMeeting(raw) {
     .map(p => (p.email || '').toLowerCase())
     .filter(Boolean);
 
+  // Who said what, and when (seconds from the start of the recording). Kept
+  // whole: success statements quote the exact words people used, which
+  // Notetaker's own summary leaves out.
+  const transcriptEntries = (raw.transcript || [])
+    .filter(e => e && e.text)
+    .map(e => ({ speaker: e.speaker || 'Unknown', at: Math.round(Number(e.start_time) || 0), text: e.text }));
+
   return {
     id: raw.id,
     title: raw.title,
     date: raw.start_time ? raw.start_time.slice(0, 10) : null,
+    startTime: raw.start_time || null,
+    ...classifyMeeting(participantEmails),
+    transcriptEntries,
     project: null,
     source: 'notetaker',
     mondayLink: raw.meeting_link,
@@ -102,6 +110,7 @@ const MEETINGS_QUERY = `query ($limit: Int, $access: MeetingAccessFilter) {
         participants { email }
         topics { title talking_points { content timestamp } }
         action_items { id content is_completed owner due_date }
+        transcript { text start_time speaker }
       }
       page_info { has_next_page cursor }
     }

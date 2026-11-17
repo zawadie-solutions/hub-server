@@ -3,6 +3,7 @@ const env = require('../config/env');
 const knowledgeStore = require('../data/knowledgeStore');
 const systemInstructions = require('../data/systemInstructions');
 const mondayService = require('../services/mondayService');
+const { transcriptText, mondayUpdateText } = require('./statements');
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 const MODEL = 'gpt-4o';
@@ -19,6 +20,11 @@ follow up with the client", "create a Monday task for Tyler due Friday"), call c
 than just describing what you would do — pull the task description, and owner/due date/priority if they're
 mentioned, straight from their message. Confirm briefly once it's done, or explain plainly if it failed
 (e.g. Monday.com isn't connected).
+
+When someone asks you to draft or write an email (a follow-up, a recap, a reply) and the draft_email tool is
+available, call it: it saves a draft in their own Gmail, it never sends. Then tell them it's in their Gmail
+drafts, include the link, and remind them to review it before sending. If the tool isn't available, write the
+email in your reply and say they can allow Gmail drafts from a meeting page or Settings.
 
 Follow Zawadie's knowledge base rules strictly:
 - Treat the knowledge base as the primary source of truth about the company.
@@ -161,7 +167,38 @@ const CHAT_TOOLS = [{
   }
 }];
 
-async function runTool(call, { onTaskCreated, taskBoardId }) {
+// Only offered to people who allowed Gmail drafts. Creates a DRAFT in their
+// own Gmail; nothing is ever sent.
+const DRAFT_EMAIL_TOOL = {
+  type: 'function',
+  function: {
+    name: 'draft_email',
+    description: "Saves an email as a DRAFT in the user's own Gmail for them to review and send. Never sends. Use when the user asks you to draft, write or prepare an email, follow-up or recap.",
+    parameters: {
+      type: 'object',
+      properties: {
+        to: { type: 'array', items: { type: 'string' }, description: 'Recipient email addresses: ones the user gave, or attendee emails from the meeting they mean. Empty if unknown.' },
+        subject: { type: 'string' },
+        body: { type: 'string', description: 'Plain-text email body, signed with the user\'s first name. Only facts from the meetings and knowledge base.' }
+      },
+      required: ['subject', 'body']
+    }
+  }
+};
+
+async function runTool(call, { onTaskCreated, taskBoardId, draftEmail }) {
+  if (call.function.name === 'draft_email' && draftEmail) {
+    let args;
+    try {
+      args = JSON.parse(call.function.arguments || '{}');
+    } catch {
+      return { success: false, message: 'Could not parse tool arguments' };
+    }
+    const result = await draftEmail(args);
+    return result.created
+      ? { success: true, message: `Draft saved in the user's Gmail (not sent). Link for the user: ${result.link}` }
+      : { success: false, message: `Couldn't save the draft: ${result.reason}` };
+  }
   if (call.function.name !== 'create_monday_task') {
     return { success: false, message: 'Unknown tool' };
   }
@@ -196,7 +233,8 @@ async function runTool(call, { onTaskCreated, taskBoardId }) {
  * those tasks go to (an admin's own); otherwise they use the shared one.
  * Returns { reply, sourcesUsed } where sourcesUsed lists which meetings were relevant.
  */
-async function handleChat(messages, { meetings = [], calendarEvents = null, onTaskCreated = null, taskBoardId = null } = {}) {
+async function handleChat(messages, { meetings = [], calendarEvents = null, onTaskCreated = null, taskBoardId = null, draftEmail = null } = {}) {
+  const tools = draftEmail ? [...CHAT_TOOLS, DRAFT_EMAIL_TOOL] : CHAT_TOOLS;
   const customInstructions = systemInstructions.get().body.trim();
   const customBlock = customInstructions
     ? `\n\n=== ADDITIONAL INSTRUCTIONS FROM ZAWADIE LEADERSHIP ===\nThese refine your tone, behavior, and response format — follow them directly. They do not authorize inventing facts that aren't in the knowledge base or meetings below.\n${customInstructions}`
@@ -220,7 +258,7 @@ ${meetingsContext(meetings)}`
   let response = await openai.chat.completions.create({
     model: MODEL,
     messages: conversation,
-    tools: CHAT_TOOLS
+    tools
   });
   let choice = response.choices[0];
 
@@ -230,13 +268,13 @@ ${meetingsContext(meetings)}`
   while (choice.finish_reason === 'tool_calls' && choice.message.tool_calls) {
     conversation.push(choice.message);
     for (const call of choice.message.tool_calls) {
-      const result = await runTool(call, { onTaskCreated, taskBoardId });
+      const result = await runTool(call, { onTaskCreated, taskBoardId, draftEmail });
       conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }
     response = await openai.chat.completions.create({
       model: MODEL,
       messages: conversation,
-      tools: CHAT_TOOLS
+      tools
     });
     choice = response.choices[0];
   }
@@ -254,4 +292,90 @@ ${meetingsContext(meetings)}`
   return { reply, sourcesUsed };
 }
 
-module.exports = { processMeetingAnalysis, handleChat };
+// Long enough for any real meeting seen so far (the longest was ~40k characters).
+const MAX_ASSIGNMENT_TRANSCRIPT_CHARS = 80000;
+
+/**
+ * Answers the assigned person's questions about one assignment, from the
+ * meeting it came from. Kept to that assignment: the person may not have
+ * attended the meeting, so this isn't a way into the rest of it.
+ */
+async function askAboutAssignment(assignment, meeting, messages) {
+  const transcript = meeting && meeting.transcriptEntries && meeting.transcriptEntries.length
+    ? transcriptText(meeting.transcriptEntries).slice(0, MAX_ASSIGNMENT_TRANSCRIPT_CHARS)
+    : '(The transcript is no longer available. Answer from the success statement only, and say so.)';
+
+  const system = `You are Ombeni AI, Zawadie Solutions' assistant. You are helping ${assignment.ownerName || 'a Zawadie employee'} get
+one assignment exactly right. The assignment came from the meeting "${assignment.meetingTitle}" (${assignment.meetingDate}).
+
+Answer only questions about this assignment: what was asked, the exact words used, details, deadlines,
+who to deliver to, and what is still unclear. If they ask about other parts of the meeting that have
+nothing to do with this assignment, say you can only help with their assignment here.
+
+When the transcript answers the question, quote the exact words with the speaker and [m:ss] time.
+When it doesn't, say so plainly and suggest asking ${assignment.assignedBy && assignment.assignedBy !== 'self' ? assignment.assignedBy : 'whoever gave the instruction'}.
+Never guess. Write plain text, no Markdown symbols.
+
+THE ASSIGNMENT (success statement):
+${mondayUpdateText(assignment)}
+
+MEETING TRANSCRIPT:
+${transcript}`;
+
+  const response = await openai.chat.completions.create({
+    model: MODEL,
+    temperature: 0.2,
+    messages: [{ role: 'system', content: system }, ...messages]
+  });
+  return response.choices[0].message.content;
+}
+
+/**
+ * A recap email to the client after a client meeting: what we understood,
+ * what we'll deliver, what we need from them, and what to confirm. Written
+ * only from the meeting itself. Returns { subject, body }.
+ */
+async function writeRecapEmail(meeting, { senderName, waitingOnClient = [] }) {
+  const transcript = transcriptText(meeting.transcriptEntries || []).slice(0, MAX_ASSIGNMENT_TRANSCRIPT_CHARS);
+  const a = meeting.analysis || {};
+  const response = await openai.chat.completions.create({
+    model: MODEL,
+    temperature: 0.3,
+    response_format: { type: 'json_object' },
+    messages: [{
+      role: 'user',
+      content: `Write a short recap email from ${senderName || 'a Zawadie Solutions team member'} at Zawadie Solutions to the client
+after the meeting "${meeting.title}" (${meeting.date}). Its purpose is to confirm in writing that we understood
+them correctly, so nothing gets lost or misunderstood.
+
+Structure (plain text, short paragraphs and simple "- " lists, under 250 words, warm and professional):
+1. Thank them briefly.
+2. "What we understood": their specific requirements, with the exact numbers, dates, formats and names they gave.
+3. "What we'll deliver, and when": only what Zawadie actually committed to in the meeting.
+4. "What we need from you": what they said they would send or do.
+5. "Please confirm": anything left vague or open, as short questions.
+6. Sign off with the sender's first name.
+Never invent commitments, prices or dates that weren't said. Leave a section out if it would be empty.
+This is a plain-text email: no Markdown, no asterisks, no # headings. Write section titles as plain lines.
+Refer to the meeting by its date (${meeting.date}), never "yesterday" or "today": it may be sent days later.
+
+Return JSON: { "subject": "...", "body": "..." }
+
+MEETING SUMMARY: ${a.summary || '(none)'}
+CLIENT PROMISED: ${waitingOnClient.map(w => `${w.who}: ${w.what}`).join(' | ') || '(nothing recorded)'}
+
+TRANSCRIPT:
+${transcript || '(no transcript; use the summary)'}
+
+${a.fullSummary ? `NOTES:\n${String(a.fullSummary).slice(0, 4000)}` : ''}`
+    }]
+  });
+  const raw = JSON.parse(response.choices[0].message.content);
+  return {
+    subject: String(raw.subject || `Recap: ${meeting.title}`).slice(0, 200),
+    // In case Markdown slips through: it would show as literal symbols in a plain-text email.
+    body: String(raw.body || '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/^#+\s*/gm, '').slice(0, 8000)
+  };
+}
+
+module.exports = { processMeetingAnalysis, handleChat, askAboutAssignment, writeRecapEmail };

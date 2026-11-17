@@ -2,6 +2,9 @@ node_modules/
 .env
 _run.log
 
-# Keeps a growing log of every action item already pushed to Monday.com —
-# runtime cache, not configuration, so it'd just be commit noise.
-data/synced-action-items.json
+# Success statements and briefs when run standalone (inside the hub they're in
+# MySQL). People's work, not configuration: never commit it.
+data/work-store.json
+
+# Each person's co-worker settings and encrypted Google access, standalone only.
+data/people.json

@@ -48,12 +48,30 @@ const env = {
   // Standalone only: shared with the Zawadie Hub (hub-server/data/sso-secret.txt)
   // so this app can trust a sign-in that already happened there. Inside the hub
   // the signed-in user is handed over directly (req.hubUser) instead.
-  SSO_SHARED_SECRET: process.env.ZAWADIE_SSO_SECRET || ''
+  SSO_SHARED_SECRET: process.env.ZAWADIE_SSO_SECRET || '',
+  // Attendees on these domains (or full addresses, for people on a personal
+  // email) are Zawadie people; anyone else makes a meeting
+  // a client meeting. Comma-separated.
+  COMPANY_DOMAINS: (read('COMPANY_DOMAINS') || 'zawadie.com')
+    .split(',').map(d => d.trim().toLowerCase().replace(/^@/, '')).filter(Boolean),
+  // Where links in Slack messages point (Ombeni's address on the hub).
+  APP_URL: readOwn('APP_URL') || 'https://ai.zawadie.com/ombeni-ai/',
+  // Success statements are written for meetings on or after this date
+  // (YYYY-MM-DD). Unset: from the day the feature first ran.
+  STATEMENTS_FROM: readOwn('STATEMENTS_FROM'),
+  // "off" writes success statements without DMing anyone (for local testing).
+  SEND_SLACK_DMS: readOwn('SEND_SLACK_DMS') !== 'off',
+  // Encrypts each person's stored Google access. Falls back to the hub's
+  // SESSION_SECRET; if that one changes, people just connect Google again.
+  TOKEN_KEY: readOwn('TOKEN_KEY') || process.env.SESSION_SECRET || '',
+  // "off" stops morning messages and meeting prep notes (e.g. for local testing).
+  COWORKER: readOwn('COWORKER') !== 'off'
 };
 
 env.isOpenAIConfigured = Boolean(env.OPENAI_API_KEY);
 env.isMondayConfigured = Boolean(env.MONDAY_API_KEY && env.MONDAY_BOARD_ID);
 env.isSlackConfigured = Boolean(env.SLACK_BOT_TOKEN && env.SLACK_CHANNEL);
+env.isSlackDmConfigured = Boolean(env.SLACK_BOT_TOKEN);
 env.isNotetakerConfigured = env.MONDAY_API_KEYS.length > 0;
 env.isGoogleConfigured = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 

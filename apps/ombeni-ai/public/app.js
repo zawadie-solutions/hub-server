@@ -12,7 +12,14 @@ const state = {
   calendarConnected: false,
   meetingTab: 'today',
   upcomingCalendar: { calendarAvailable: false, today: [], tomorrow: [] },
-  selectedMeetings: new Set() // ids checked in the "Earlier" meetings tab (admin bulk actions)
+  selectedMeetings: new Set(), // ids checked in the "Earlier" meetings tab (admin bulk actions)
+  work: null,                  // GET /api/work: { mine, unassigned, waitingOnClient, mondayConnected }
+  workBoards: null,            // the person's own Monday.com boards, loaded when first needed
+  workExpanded: new Set(),     // assignment ids opened on My Work
+  workFocusId: null,           // opened from a Slack link (#work/<id>)
+  workAsks: {},                // { [assignmentId]: [{ role, content }] } "Ask about this" threads
+  workPanel: {},               // { [assignmentId]: 'explain' | 'check' } the open Phase 2 panel
+  currentClient: null          // the client key open on the Clients page
 };
 
 const MEETING_TABS = [
@@ -62,6 +69,8 @@ function dedupeMeetings(meetings) {
 
 const PAGE_META = {
   home: { title: 'Home', subtitle: "Zawadie Solutions' company AI assistant" },
+  work: { title: 'My Work', subtitle: 'What you were asked to do in meetings, and what success looks like' },
+  clients: { title: 'Clients', subtitle: 'What each client has asked for, from the meetings you attended' },
   ask: { title: 'Ask Ombeni', subtitle: 'Grounded in the Zawadie knowledge base and every recorded meeting' },
   knowledge: { title: 'Knowledge', subtitle: 'Zawadie knowledge base and recorded meetings' },
   meetings: { title: 'Meetings', subtitle: 'All recorded meetings Ombeni AI has access to' },
@@ -87,6 +96,8 @@ function goToView(name) {
   document.getElementById('pageSubtitle').textContent = meta.subtitle;
 
   if (name === 'home') refreshHome();
+  if (name === 'work') refreshWork();
+  if (name === 'clients') refreshClients();
   if (name === 'knowledge') refreshKnowledge();
   if (name === 'meetings') refreshMeetings();
   if (name === 'activity') refreshActivity();
@@ -198,13 +209,14 @@ async function refreshHome() {
 
   const analyzed = meetings.filter(m => m.analysis).length;
   const allActionItems = meetings.flatMap(m => (m.analysis && m.analysis.actionItems) || []);
-  const syncedToMonday = allActionItems.filter(ai => ai.mondayResult && ai.mondayResult.created).length;
+  await loadWork().catch(() => {});
+  const openWork = state.work ? state.work.mine.filter(a => a.status !== 'done').length : 0;
 
   document.getElementById('homeStats').innerHTML = `
     ${statCard(meetings.length, 'Recorded meetings')}
     ${statCard(analyzed, 'AI-summarized')}
     ${statCard(allActionItems.length, 'Action items')}
-    ${statCard(syncedToMonday, 'Synced to Monday.com')}
+    ${statCard(openWork, 'Open in My Work')}
   `;
 }
 
@@ -723,7 +735,10 @@ async function renderMeetingDetail() {
     html += `<div style="margin-bottom:16px;"><a href="${escapeHtml(m.mondayLink)}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">View in Monday.com Notetaker &rarr;</a></div>`;
   }
 
-  html += `<div style="margin-bottom:16px;"><button class="btn btn-secondary btn-sm" id="askOmbeniMeetingBtn">Ask Ombeni about this meeting</button></div>`;
+  html += `<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <button class="btn btn-secondary btn-sm" id="askOmbeniMeetingBtn">Ask Ombeni about this meeting</button>
+    ${m.kind === 'client' ? '<button class="btn btn-secondary btn-sm" id="recapDraftBtn">Draft recap email to the client</button><span id="recapDraftResult" class="work-note" style="margin:0;"></span>' : ''}
+  </div>`;
 
   if (!m.analysis) {
     html += `<div style="margin-top:18px;"><button class="btn btn-primary" id="analyzeBtn">Analyze with Ombeni AI</button></div>`;
@@ -756,7 +771,6 @@ async function renderMeetingDetail() {
               <div class="ai-task">${escapeHtml(ai.task)}</div>
               <div class="ai-meta">${escapeHtml(ai.owner || 'Unassigned')} · Due ${escapeHtml(ai.due || 'n/a')}${ai.priority ? ` · ${escapeHtml(ai.priority)}` : ''}${ai.completed ? ' · Already done' : ''}</div>
             </div>
-            ${actionItemSyncTag(ai)}
           </div>`).join('')}
       </div>
 
@@ -804,6 +818,27 @@ async function renderMeetingDetail() {
     meetingChatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMeetingChatMessage(m); });
   }
 
+  const recapBtn = document.getElementById('recapDraftBtn');
+  if (recapBtn) {
+    recapBtn.addEventListener('click', async () => {
+      const result = document.getElementById('recapDraftResult');
+      recapBtn.disabled = true;
+      recapBtn.textContent = 'Writing the recap…';
+      try {
+        const { data } = await api(`/meetings/${m.id}/recap-draft`, { method: 'POST' });
+        result.innerHTML = `Saved in your Gmail drafts, to ${escapeHtml(data.to.join(', '))}. Nothing was sent. <a href="${escapeHtml(data.link)}" target="_blank" rel="noopener">Open the draft</a>`;
+      } catch (err) {
+        if (err.status === 409 && confirm('To save drafts in your Gmail, Ombeni needs your permission once. Ombeni can only create drafts: it never sends email. Continue to Google?')) {
+          window.location.href = 'auth/google?gmail=1';
+          return;
+        }
+        result.textContent = err.message;
+      }
+      recapBtn.disabled = false;
+      recapBtn.textContent = 'Draft recap email to the client';
+    });
+  }
+
   const analyzeBtn = document.getElementById('analyzeBtn');
   if (analyzeBtn) {
     analyzeBtn.addEventListener('click', async () => {
@@ -820,15 +855,6 @@ async function renderMeetingDetail() {
     });
   }
 
-}
-
-// Action items are pushed to Monday.com automatically (see
-// store.syncActionItemsToMonday server-side) — this just reflects whatever
-// that process has already recorded on the item, no user action needed.
-function actionItemSyncTag(ai) {
-  if (ai.completed) return '';
-  if (ai.mondayResult && ai.mondayResult.created) return '<span class="tag tag-green">Added to Monday.com</span>';
-  return '<span class="tag tag-gold">Pending Monday.com sync</span>';
 }
 
 function renderMeetingChatThread(m) {
@@ -885,6 +911,483 @@ async function sendMeetingChatMessage(m) {
   }
 }
 
+// ---------------- My Work ----------------
+// Each person's own success statements (see routes/work.js). Nothing here is
+// visible to anyone else, admins included.
+
+async function loadWork() {
+  const { data } = await api('/work');
+  state.work = data;
+  updateWorkBadge();
+  return data;
+}
+
+function updateWorkBadge() {
+  const badge = document.getElementById('workBadge');
+  const count = state.work ? state.work.mine.filter(a => a.status === 'new').length : 0;
+  badge.hidden = count === 0;
+  badge.textContent = count;
+}
+
+async function refreshWork() {
+  const container = document.getElementById('workContent');
+  try {
+    await loadWork();
+  } catch (err) {
+    container.innerHTML = `<div class="card empty-state">Couldn't load your work: ${escapeHtml(err.message)}</div>`;
+    return;
+  }
+  // New work starts open, so the statement is the first thing you read.
+  state.work.mine.filter(a => a.status === 'new').forEach(a => state.workExpanded.add(a.id));
+  if (state.workFocusId) state.workExpanded.add(state.workFocusId);
+  renderWork();
+
+  if (state.workFocusId) {
+    const el = document.querySelector(`[data-work-id="${CSS.escape(state.workFocusId)}"]`);
+    if (el) {
+      el.classList.add('is-focus');
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      alert("That assignment isn't on your list. It may have been passed to someone else.");
+    }
+    state.workFocusId = null;
+  }
+}
+
+function formatDueDate(iso) {
+  if (!iso) return null;
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function dueLabel(statement) {
+  return formatDueDate(statement.due) || statement.dueSaid || null;
+}
+
+function workPoints(points, cls) {
+  return `<ul class="work-points ${cls || ''}">${points.map(p => `
+    <li>${escapeHtml(p.text)}${p.quote ? `<span class="work-quote">"${escapeHtml(p.quote)}"${p.speaker ? ` (${escapeHtml(p.speaker)}${p.time ? `, ${escapeHtml(p.time)}` : ''})` : ''}</span>` : ''}</li>`).join('')}
+  </ul>`;
+}
+
+function statementHtml(a) {
+  const s = a.statement;
+  const due = dueLabel(s);
+  return `
+    ${s.outcome ? `<div class="work-outcome">${escapeHtml(s.outcome)}</div>` : ''}
+    ${s.mustHaves.length ? `<div class="detail-section-title">Must have</div>${workPoints(s.mustHaves)}` : ''}
+    ${s.avoid.length ? `<div class="detail-section-title">Avoid</div>${workPoints(s.avoid, 'avoid')}` : ''}
+    <div class="work-facts">
+      ${due ? `<div><b>Due:</b> ${escapeHtml(due)}</div>` : ''}
+      ${s.deliverTo ? `<div><b>Deliver to:</b> ${escapeHtml(s.deliverTo)}</div>` : ''}
+      ${a.assignedBy ? `<div><b>Asked by:</b> ${escapeHtml(a.assignedBy === 'self' ? 'You volunteered' : a.assignedBy)}</div>` : ''}
+    </div>
+    ${s.unclear.length ? `<div class="detail-section-title">Still unclear: ask before you start</div>${workPoints(s.unclear.map(u => ({ text: u })), 'unclear')}` : ''}`;
+}
+
+function mondayControls(a) {
+  if (a.monday) return `<span class="tag tag-green">On Monday.com: ${escapeHtml(a.monday.boardName)}</span>`;
+  if (a.status === 'done' || !state.work.mondayConnected) return '';
+  if (!state.workBoards) return `<button class="btn btn-ghost btn-sm" data-act="load-boards" data-id="${a.id}">Send to Monday.com…</button>`;
+  if (!state.workBoards.length) return `<span class="work-note">You're not a member of any Monday.com board Ombeni can see.</span>`;
+  return `
+    <select data-board-for="${a.id}">
+      ${state.workBoards.map(b => `<option value="${escapeHtml(b.id)}">${escapeHtml(b.name)}${b.workspace ? ` (${escapeHtml(b.workspace)})` : ''}</option>`).join('')}
+    </select>
+    <button class="btn btn-secondary btn-sm" data-act="send-monday" data-id="${a.id}">Send to Monday.com</button>`;
+}
+
+function askPanel(a) {
+  const thread = state.workAsks[a.id];
+  if (!thread) return '';
+  return `
+    <div class="work-ask">
+      <div class="chat-thread">
+        <div class="msg bot"><div class="msg-bubble">Ask me anything about this assignment. I'll answer from what was said in the meeting, with quotes.</div></div>
+        ${thread.map(h => `<div class="msg ${h.role === 'user' ? 'user' : 'bot'}"><div class="msg-bubble">${escapeHtml(h.content)}</div></div>`).join('')}
+      </div>
+      <div class="chat-input-area">
+        <input type="text" data-ask-input="${a.id}" placeholder="e.g. What exactly did they say about the format?">
+        <button class="btn btn-primary btn-sm" data-act="ask-send" data-id="${a.id}">Ask</button>
+      </div>
+    </div>`;
+}
+
+// ---- Explain it back / Check my work ----
+
+const EXPLAIN_LABEL = {
+  covered: ['tag-green', 'Covered'],
+  ok: ['tag-green', 'OK'],
+  missed: ['tag-gold', 'Missed'],
+  different: ['tag-red', 'Different'],
+  conflict: ['tag-red', 'Goes against this']
+};
+
+const WORK_LABEL = {
+  met: ['tag-green', 'Met'],
+  not_met: ['tag-red', 'Not met'],
+  unclear: ['tag-gold', "Can't tell"]
+};
+
+function resultRows(items, labels, detail) {
+  return `<div class="check-list">${items.map(i => {
+    const [cls, label] = labels[i.status] || ['tag-neutral', i.status];
+    return `
+      <div class="check-row">
+        <span class="tag ${cls}">${escapeHtml(label)}</span>
+        <div>
+          <div>${i.kind === 'avoid' ? '<b>Don\'t:</b> ' : ''}${escapeHtml(i.text)}</div>
+          ${detail(i)}
+        </div>
+      </div>`;
+  }).join('')}</div>`;
+}
+
+function explainPanel(a) {
+  const done = a.explained;
+  const r = done && done.result;
+  return `
+    <div class="work-panel">
+      <div class="work-panel-title">Explain it back</div>
+      <div class="work-note" style="margin:0 0 8px;">In your own words: what will you deliver, by when, and to whom? Ombeni checks it against what was asked, so a misunderstanding shows up now, not after the work is done.</div>
+      <textarea data-explain-input="${a.id}" rows="3" placeholder="e.g. I'll write a one-page Google Doc checklist for new clients, with Workspace access done in 2 days, and send it to Tyler by Friday.">${escapeHtml(done ? done.text : '')}</textarea>
+      <div class="work-actions" style="margin-top:8px;"><button class="btn btn-primary btn-sm" data-act="explain-send" data-id="${a.id}">${done ? 'Check again' : 'Check my understanding'}</button></div>
+      ${r ? `
+        <div class="check-verdict ${r.ready ? 'good' : 'warn'}">${r.ready
+          ? 'You\'ve got it. Everything that was asked is in your explanation.'
+          : `${r.items.filter(i => !['covered', 'ok'].includes(i.status)).length} thing(s) to look at before you start.`}</div>
+        ${resultRows(r.items, EXPLAIN_LABEL, i => (i.note ? `<div class="work-note" style="margin-top:2px;">${escapeHtml(i.note)}</div>` : ''))}
+        ${r.extra.length ? `<div class="detail-section-title">Not asked for</div>${workPoints(r.extra.map(e => ({ text: e })), 'unclear')}` : ''}` : ''}
+    </div>`;
+}
+
+function checkPanel(a) {
+  const last = (a.checks || [])[0];
+  const r = last && last.result;
+  return `
+    <div class="work-panel">
+      <div class="work-panel-title">Check my work</div>
+      <div class="work-note" style="margin:0 0 8px;">Before you deliver: upload your draft (.docx, .pdf, .txt, .md), paste it, or describe what you did. Ombeni checks it against every requirement. Your work itself isn't saved, only the result.</div>
+      <textarea data-check-input="${a.id}" rows="4" placeholder="Paste your draft, or describe what you did..."></textarea>
+      <div class="work-actions" style="margin-top:8px;">
+        <input type="file" data-check-file="${a.id}" accept=".txt,.md,.docx,.pdf">
+        <button class="btn btn-primary btn-sm" data-act="check-send" data-id="${a.id}">Check it</button>
+      </div>
+      ${r ? `
+        <div class="check-verdict ${r.ready ? 'good' : 'warn'}">${r.ready
+          ? 'Ready to deliver: every requirement is met.'
+          : `${r.items.filter(i => i.status !== 'met').length} requirement(s) to fix or confirm before you deliver.`}
+          <span class="work-note" style="display:block;margin-top:2px;">Checked ${escapeHtml(new Date(last.at).toLocaleString())} · ${escapeHtml(last.source)}${r.truncated ? ' · only the first part of a very long draft was checked' : ''}</span>
+        </div>
+        ${resultRows(r.items, WORK_LABEL, i => `
+          ${i.evidence ? `<span class="work-quote">"${escapeHtml(i.evidence)}"</span>` : ''}
+          ${i.fix ? `<div class="work-note" style="margin-top:2px;">${escapeHtml(i.fix)}</div>` : ''}`)}` : ''}
+    </div>`;
+}
+
+function phase2Tag(a) {
+  const last = (a.checks || [])[0];
+  if (last) {
+    const open = last.result.items.filter(i => i.status !== 'met').length;
+    return open ? `<span class="tag tag-gold">${open} to fix</span>` : '<span class="tag tag-green">Ready to deliver</span>';
+  }
+  if (a.explained && !a.explained.result.ready) return '<span class="tag tag-gold">Check your understanding</span>';
+  return '';
+}
+
+const WORK_STATUS = {
+  new: '<span class="tag tag-red">New</span>',
+  confirmed: '<span class="tag tag-blue">Got it</span>',
+  done: '<span class="tag tag-green">Done</span>'
+};
+
+function workCard(a, mode) {
+  const open = state.workExpanded.has(a.id);
+  const due = dueLabel(a.statement);
+  const me = state.currentUser ? state.currentUser.email.toLowerCase() : '';
+  const meta = [`From ${a.meetingTitle}`, a.meetingDate, due ? `Due ${due}` : null].filter(Boolean).join(' · ');
+
+  let actions;
+  if (mode === 'unassigned') {
+    actions = `<button class="btn btn-primary btn-sm" data-act="claim" data-id="${a.id}">I'll take it</button>`;
+  } else if (a.status === 'new') {
+    actions = `
+      <button class="btn btn-primary btn-sm" data-act="panel" data-panel="explain" data-id="${a.id}">Explain it back</button>
+      <button class="btn btn-secondary btn-sm" data-act="got_it" data-id="${a.id}">Got it</button>
+      <button class="btn btn-ghost btn-sm" data-act="ask" data-id="${a.id}">Ask about this</button>
+      <button class="btn btn-ghost btn-sm" data-act="not_mine" data-id="${a.id}">Not mine</button>
+      ${mondayControls(a)}`;
+  } else if (a.status === 'confirmed') {
+    actions = `
+      <button class="btn btn-primary btn-sm" data-act="panel" data-panel="check" data-id="${a.id}">Check my work</button>
+      <button class="btn btn-secondary btn-sm" data-act="done" data-id="${a.id}">Mark done</button>
+      <button class="btn btn-ghost btn-sm" data-act="panel" data-panel="explain" data-id="${a.id}">Explain it back</button>
+      <button class="btn btn-ghost btn-sm" data-act="ask" data-id="${a.id}">Ask about this</button>
+      <button class="btn btn-ghost btn-sm" data-act="not_mine" data-id="${a.id}">Not mine</button>
+      ${mondayControls(a)}`;
+  } else {
+    actions = `<button class="btn btn-ghost btn-sm" data-act="reopen" data-id="${a.id}">Reopen</button>${a.monday ? mondayControls(a) : ''}`;
+  }
+
+  const notes = [];
+  if (mode === 'unassigned') {
+    notes.push(a.ownerName ? `Said to: ${a.ownerName}. Ombeni couldn't tell for sure which Zawadie person that is.` : 'Nobody in particular was named for this.');
+    if ((a.declinedBy || []).includes(me)) notes.push("You said earlier this isn't yours.");
+  } else if (a.slack && a.slack.status === 'not_sent') {
+    notes.push(`Not sent to your Slack: ${a.slack.reason}.`);
+  }
+
+  return `
+    <div class="work-card ${a.status === 'new' && mode === 'mine' ? 'is-new' : ''} ${a.status === 'done' ? 'is-done' : ''}" data-work-id="${a.id}">
+      <div class="work-card-head" data-act="toggle" data-id="${a.id}">
+        <div style="min-width:0;">
+          <div class="work-card-title">${escapeHtml(a.title)}</div>
+          <div class="list-card-meta">${escapeHtml(meta)}</div>
+        </div>
+        <div class="work-tags">${mode === 'mine' ? `${a.status !== 'done' ? phase2Tag(a) : ''}${WORK_STATUS[a.status] || ''}` : '<span class="tag tag-gold">Unassigned</span>'}</div>
+      </div>
+      ${open ? `
+        <div class="work-body">
+          ${statementHtml(a)}
+          <div class="work-actions">${actions}</div>
+          ${notes.map(n => `<div class="work-note">${escapeHtml(n)}</div>`).join('')}
+          ${mode === 'mine' && state.workPanel[a.id] === 'explain' ? explainPanel(a) : ''}
+          ${mode === 'mine' && state.workPanel[a.id] === 'check' ? checkPanel(a) : ''}
+          ${mode === 'mine' ? askPanel(a) : ''}
+        </div>` : ''}
+    </div>`;
+}
+
+function renderWork() {
+  const { mine, unassigned, waitingOnClient } = state.work;
+  const open = mine.filter(a => a.status !== 'done').sort((a, b) => (a.status === 'new' ? 0 : 1) - (b.status === 'new' ? 0 : 1));
+  const done = mine.filter(a => a.status === 'done');
+  const section = (label, body) => `<div class="work-section"><div class="section-label">${label}</div>${body}</div>`;
+  const cards = (items, mode) => `<div class="stack-list">${items.map(a => workCard(a, mode)).join('')}</div>`;
+
+  let html = section('Your work', open.length
+    ? cards(open, 'mine')
+    : '<div class="card empty-state">Nothing open. When you\'re given work in a recorded meeting, it shows up here and in your Slack.</div>');
+
+  if (unassigned.length) html += section('Unassigned, from meetings you attended', cards(unassigned, 'unassigned'));
+
+  if (waitingOnClient.length) {
+    html += section('Waiting on the client', `<div class="stack-list">${waitingOnClient.map(w => `
+      <div class="work-card">
+        <div class="work-card-title">${escapeHtml(w.meetingTitle)}</div>
+        <div class="list-card-meta" style="margin-bottom:10px;">${escapeHtml([w.meetingDate, w.clients.join(', ')].filter(Boolean).join(' · '))}</div>
+        ${workPoints(w.items.map(i => ({ text: `${i.who ? `${i.who}: ` : ''}${i.what}`, quote: i.quote, time: i.time })))}
+      </div>`).join('')}</div>`);
+  }
+
+  if (done.length) html += section('Done', cards(done, 'mine'));
+  document.getElementById('workContent').innerHTML = html;
+}
+
+function replaceWorkItem(updated, id) {
+  state.work.mine = state.work.mine.filter(a => a.id !== id);
+  state.work.unassigned = state.work.unassigned.filter(a => a.id !== id);
+  if (updated) state.work.mine.push(updated);
+  updateWorkBadge();
+  renderWork();
+}
+
+async function sendWorkQuestion(id) {
+  const input = document.querySelector(`[data-ask-input="${CSS.escape(id)}"]`);
+  const question = input && input.value.trim();
+  if (!question) return;
+  const thread = state.workAsks[id];
+  thread.push({ role: 'user', content: question });
+  thread.push({ role: 'assistant', content: 'Thinking…', pending: true });
+  renderWork();
+  try {
+    const { reply } = await api(`/work/${id}/ask`, {
+      method: 'POST',
+      body: JSON.stringify({ messages: thread.filter(h => !h.pending) })
+    });
+    thread.pop();
+    thread.push({ role: 'assistant', content: reply });
+  } catch (err) {
+    thread.pop();
+    thread.push({ role: 'assistant', content: `Sorry, something went wrong: ${err.message}` });
+  }
+  renderWork();
+  const next = document.querySelector(`[data-ask-input="${CSS.escape(id)}"]`);
+  if (next) next.focus();
+}
+
+document.getElementById('workContent').addEventListener('click', async (e) => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const { act, id } = el.dataset;
+
+  if (act === 'toggle') {
+    if (state.workExpanded.has(id)) state.workExpanded.delete(id);
+    else state.workExpanded.add(id);
+    return renderWork();
+  }
+  if (act === 'ask') {
+    if (!state.workAsks[id]) state.workAsks[id] = [];
+    renderWork();
+    const input = document.querySelector(`[data-ask-input="${CSS.escape(id)}"]`);
+    if (input) input.focus();
+    return;
+  }
+  if (act === 'ask-send') return sendWorkQuestion(id);
+  if (act === 'panel') {
+    state.workPanel[id] = state.workPanel[id] === el.dataset.panel ? null : el.dataset.panel;
+    renderWork();
+    const input = document.querySelector(`[data-${el.dataset.panel}-input="${CSS.escape(id)}"]`);
+    if (input) input.focus();
+    return;
+  }
+  if (act === 'explain-send' || act === 'check-send') return sendPhase2Check(act, id, el);
+  if (act === 'not_mine' && !confirm('Give this back? It goes to the other Zawadie people from that meeting, so one of them can take it.')) return;
+
+  el.disabled = true;
+  try {
+    if (act === 'load-boards') {
+      el.textContent = 'Loading your boards…';
+      state.workBoards = (await api('/work/boards')).data;
+      return renderWork();
+    }
+    if (act === 'send-monday') {
+      const select = document.querySelector(`[data-board-for="${CSS.escape(id)}"]`);
+      el.textContent = 'Sending…';
+      const { data } = await api(`/work/${id}/monday`, { method: 'POST', body: JSON.stringify({ boardId: select.value }) });
+      return replaceWorkItem(data, id);
+    }
+    if (act === 'claim') {
+      const { data } = await api(`/work/${id}/claim`, { method: 'POST' });
+      state.workExpanded.add(id);
+      return replaceWorkItem(data, id);
+    }
+    const { data } = await api(`/work/${id}/respond`, { method: 'POST', body: JSON.stringify({ response: act }) });
+    if (act === 'got_it' || act === 'done') state.workExpanded.delete(id);
+    replaceWorkItem(data, id);
+  } catch (err) {
+    alert(err.message);
+    renderWork();
+  }
+});
+
+async function sendPhase2Check(act, id, button) {
+  let body;
+  if (act === 'explain-send') {
+    const text = document.querySelector(`[data-explain-input="${CSS.escape(id)}"]`).value.trim();
+    if (!text) return;
+    body = JSON.stringify({ text });
+  } else {
+    const file = document.querySelector(`[data-check-file="${CSS.escape(id)}"]`).files[0];
+    const text = document.querySelector(`[data-check-input="${CSS.escape(id)}"]`).value.trim();
+    if (!file && !text) return alert('Add your draft, or describe what you did.');
+    body = new FormData();
+    if (file) body.append('file', file);
+    body.append('text', text);
+  }
+  button.disabled = true;
+  button.textContent = 'Checking…';
+  try {
+    const { data } = await api(`/work/${id}/${act === 'explain-send' ? 'explain' : 'check'}`, { method: 'POST', body });
+    replaceWorkItem(data, id);
+  } catch (err) {
+    alert(err.message);
+    renderWork();
+  }
+}
+
+document.getElementById('workContent').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.dataset.askInput) sendWorkQuestion(e.target.dataset.askInput);
+});
+
+// ---------------- Clients ----------------
+// Each person's own view of the clients they've met: only the meetings they
+// attended, and only their own work (see routes/clients.js).
+
+async function refreshClients() {
+  const list = document.getElementById('clientsList');
+  try {
+    const { data } = await api('/clients');
+    list.innerHTML = data.length
+      ? data.map(c => `
+          <div class="knowledge-section-item ${c.key === state.currentClient ? 'active' : ''}" data-client="${escapeHtml(c.key)}">
+            <span class="kb-doc-title">${escapeHtml(c.key)}<span class="work-note" style="display:block;margin:0;">${c.meetings} meeting(s) · last ${escapeHtml(c.lastDate)}</span></span>
+          </div>`).join('')
+      : '<div class="empty-state">No client meetings yet. Meetings with people from outside zawadie.com show up here.</div>';
+  } catch (err) {
+    list.innerHTML = `<div class="empty-state">Couldn't load clients: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+document.getElementById('clientsList').addEventListener('click', (e) => {
+  const item = e.target.closest('[data-client]');
+  if (item) openClient(item.dataset.client);
+});
+
+async function openClient(key) {
+  state.currentClient = key;
+  document.querySelectorAll('[data-client]').forEach(el => el.classList.toggle('active', el.dataset.client === key));
+  const box = document.getElementById('clientDetail');
+  box.innerHTML = '<div class="muted">Loading…</div>';
+  try {
+    const { data } = await api(`/clients/${encodeURIComponent(key)}`);
+    renderClient(data);
+  } catch (err) {
+    box.innerHTML = `<div class="empty-state">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderClientSummary(s) {
+  if (!s) return '<button class="btn btn-primary btn-sm" id="clientSummaryBtn">Summarize what they\'ve asked for</button>';
+  return `
+    ${s.askedFor.length ? `<div class="detail-section-title">What they've asked for</div>${workPoints(s.askedFor.map(a => ({ text: a.date ? `${a.text} (${a.date})` : a.text })))}` : ''}
+    ${s.changes.length ? `<div class="detail-section-title">Changed their mind</div>${workPoints(s.changes.map(c => ({ text: `${c.what}: was "${c.before}" (${c.from}), now "${c.after}" (${c.to})` })), 'avoid')}` : ''}
+    ${s.preferences.length ? `<div class="detail-section-title">How they like to work</div>${workPoints(s.preferences.map(t => ({ text: t })))}` : ''}
+    ${s.open.length ? `<div class="detail-section-title">Still open</div>${workPoints(s.open.map(t => ({ text: t })), 'unclear')}` : ''}
+    <div class="work-note">Written by Ombeni from the meetings below. Check the meeting itself before relying on a detail.</div>`;
+}
+
+function renderClient(c) {
+  const box = document.getElementById('clientDetail');
+  box.innerHTML = `
+    <div class="detail-title">${escapeHtml(c.key)}</div>
+    <div class="detail-meta">From the ${c.meetings.length} meeting(s) with them that you attended. Only you see this view.</div>
+    <div id="clientSummary">${renderClientSummary(c.summary)}</div>
+    ${c.mine.length ? `<div class="detail-section-title">Your work for them</div>
+      <div class="stack-list">${c.mine.map(a => `<div class="work-card" style="cursor:pointer;" data-open-work="${a.id}"><div class="work-card-title" style="font-size:14px;">${escapeHtml(a.title)}</div><div class="list-card-meta">${escapeHtml([a.meetingDate, a.status === 'done' ? 'Done' : null, a.statement.due ? `Due ${formatDueDate(a.statement.due)}` : null].filter(Boolean).join(' · '))}</div></div>`).join('')}</div>` : ''}
+    ${c.waiting.length ? `<div class="detail-section-title">Waiting on them</div>${workPoints(c.waiting.map(w => ({ text: `${w.who ? `${w.who}: ` : ''}${w.what}`, quote: w.quote })))}` : ''}
+    <div class="detail-section-title">Meetings</div>
+    <div class="stack-list">${c.meetings.map(m => `
+      <div class="list-card" data-open-meeting="${m.id}">
+        <div class="list-card-title" style="font-size:14px;">${escapeHtml(m.title)}</div>
+        <div class="list-card-meta">${escapeHtml(m.date || '')}</div>
+        ${m.summary ? `<div class="muted" style="margin-top:6px;">${escapeHtml(m.summary)}</div>` : ''}
+      </div>`).join('')}</div>`;
+
+  const btn = document.getElementById('clientSummaryBtn');
+  if (btn) btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Reading the meetings…';
+    try {
+      const { data } = await api(`/clients/${encodeURIComponent(c.key)}/summary`, { method: 'POST' });
+      document.getElementById('clientSummary').innerHTML = renderClientSummary(data);
+    } catch (err) {
+      alert(err.message);
+      btn.disabled = false;
+      btn.textContent = 'Summarize what they\'ve asked for';
+    }
+  });
+}
+
+document.getElementById('clientDetail').addEventListener('click', (e) => {
+  const meeting = e.target.closest('[data-open-meeting]');
+  if (meeting) return openMeeting(meeting.dataset.openMeeting);
+  const work = e.target.closest('[data-open-work]');
+  if (work) {
+    state.workFocusId = work.dataset.openWork;
+    goToView('work');
+  }
+});
+
 // ---------------- Activity ----------------
 
 async function refreshActivity() {
@@ -904,11 +1407,79 @@ async function refreshActivity() {
 
 // ---------------- Settings ----------------
 
+// ---- Your co-worker (morning message, meeting prep) ----
+
+async function refreshCoworkerSettings() {
+  const box = document.getElementById('coworkerSettings');
+  let c;
+  try {
+    c = (await api('/me/coworker')).data;
+  } catch (err) {
+    box.innerHTML = `<div class="muted">Couldn't load: ${escapeHtml(err.message)}</div>`;
+    return;
+  }
+
+  let google;
+  if (!c.canStore) {
+    google = '<div class="work-note">Not available yet: an admin needs to set OMBENI_TOKEN_KEY on the server.</div>';
+  } else if (c.google && c.google.connected) {
+    google = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div class="muted">Google connected${c.google.connectedAt ? ` since ${escapeHtml(new Date(c.google.connectedAt).toLocaleDateString())}` : ''}${c.timeZone ? ` · your time zone: ${escapeHtml(c.timeZone)}` : ''}</div>
+        <button class="btn btn-ghost btn-sm" id="disconnectGoogleBtn">Disconnect Google</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px;">
+        <div class="muted">${c.google.gmailDrafts
+          ? 'Gmail drafts allowed: Ombeni can save recap and follow-up emails in your drafts. It never sends.'
+          : 'Gmail drafts: let Ombeni save recap and follow-up emails in your Gmail drafts for you to review. It never sends.'}</div>
+        ${c.google.gmailDrafts ? '<span class="tag tag-green">Allowed</span>' : '<a class="btn btn-secondary btn-sm" href="auth/google?gmail=1">Allow Gmail drafts</a>'}
+      </div>`;
+  } else {
+    google = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div class="muted">${c.google && c.google.broken ? 'Your Google connection stopped working. Connect again to keep getting messages.' : 'Connect your Google Calendar so Ombeni can prepare your day.'}</div>
+        <a class="btn btn-primary btn-sm" href="auth/google">${c.google && c.google.broken ? 'Reconnect Google' : 'Connect Google'}</a>
+      </div>`;
+  }
+
+  const toggle = (name, label, hint) => `
+    <label class="coworker-toggle">
+      <input type="checkbox" data-coworker-pref="${name}" ${c.prefs[name] ? 'checked' : ''}>
+      <span><b>${label}</b><span class="work-note" style="display:block;margin-top:2px;">${hint}</span></span>
+    </label>`;
+
+  box.innerHTML = `
+    <div class="muted" style="margin-bottom:12px;">Ombeni sends these to your Slack DM. They're built only from your calendar, the meetings you attended, and your own work. Nobody else sees them.</div>
+    ${google}
+    <div style="margin-top:14px;display:flex;flex-direction:column;gap:12px;">
+      ${toggle('morning', 'Morning message', 'Weekdays at 7:30 your time: today\'s meetings, and work that\'s due, new or needs fixing.')}
+      ${toggle('prep', 'Notes before meetings', 'About 30 minutes before each meeting: what happened last time, what\'s still open, and what to ask.')}
+    </div>
+    ${c.slackReady ? '' : '<div class="work-note">Slack isn\'t connected on the server yet, so nothing can be sent.</div>'}`;
+
+  box.querySelectorAll('[data-coworker-pref]').forEach(input => input.addEventListener('change', async () => {
+    try {
+      await api('/me/coworker', { method: 'PUT', body: JSON.stringify({ [input.dataset.coworkerPref]: input.checked }) });
+    } catch (err) {
+      alert(`Couldn't save: ${err.message}`);
+      input.checked = !input.checked;
+    }
+  }));
+  const disconnect = document.getElementById('disconnectGoogleBtn');
+  if (disconnect) disconnect.addEventListener('click', async () => {
+    if (!confirm('Disconnect Google? Ombeni stops reading your calendar and deletes its stored access.')) return;
+    await api('/me/google', { method: 'DELETE' });
+    state.calendarConnected = false;
+    refreshSettings();
+  });
+}
+
 async function refreshSettings() {
+  refreshCoworkerSettings();
   const status = await loadStatus();
   const rows = [
     ['OpenAI', status.openai, 'Powers meeting analysis and Ask Ombeni.'],
-    ['Monday.com', status.monday, status.monday ? 'Connected — tasks sync automatically.' : 'Not connected yet — tasks are stored locally as "Pending Monday.com sync" until MONDAY_API_KEY and MONDAY_BOARD_ID are set.'],
+    ['Monday.com', status.monday, status.monday ? 'Connected. You send your own work to your own boards from My Work.' : 'Not connected yet. Set MONDAY_API_KEY and MONDAY_BOARD_ID to send work to Monday.com.'],
     ['Monday Notetaker', status.notetaker, status.notetaker ? 'Meetings are pulled live from your recorded Notetaker calls.' : 'Not active — showing demo meeting data instead of real recordings.'],
     ['Slack', status.slack, status.slack ? 'Connected — Ombeni AI can post notifications.' : 'Not connected yet — set SLACK_BOT_TOKEN and SLACK_CHANNEL to enable notifications.'],
     [
@@ -1153,7 +1724,16 @@ function meetingNotificationTick() {
 initAuth().then(signedIn => {
   if (!signedIn) return;
   loadStatus();
-  goToView('home');
+  // Slack messages link to My Work (<app>/#work) or straight to one
+  // assignment (<app>/#work/<id>).
+  const workLink = window.location.hash.match(/^#work(?:\/([\w-]+))?$/);
+  if (workLink) {
+    state.workFocusId = workLink[1] || null;
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+    goToView('work');
+  } else {
+    goToView('home'); // also loads My Work, for the badge
+  }
   maybeRequestNotificationPermission();
   setInterval(meetingNotificationTick, 60000);
 });

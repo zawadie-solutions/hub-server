@@ -59,6 +59,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/auth', require('./routes/auth'));
 app.use('/api', require('./routes/api'));
 
+// Every refresh also writes success statements for new meetings and sends
+// them to the people they're for.
+store.onMeetingsRefreshed(meetings => require('./services/statementService').processNewMeetings(meetings));
+
+// Morning messages and notes before meetings, for everyone who connected Google.
+require('./services/coworker').start();
+
 store.refreshMeetings()
   .then(() => console.log(store.isUsingNotetaker() ? '✅ Loaded real meetings from Monday Notetaker' : 'ℹ️ Monday not configured — using demo meeting data'))
   .catch(err => console.error('⚠️ Failed to load Notetaker meetings, falling back to demo data:', err.message))
