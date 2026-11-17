@@ -163,6 +163,26 @@ test('bot messages, edits and messages outside a thread', async () => {
   assert.match(posted.at(-1).text, /I answer in the thread under each assignment/);
 });
 
+test('a message in the main box is about your latest open assignment in that DM, and says so', async () => {
+  const older = await workStore.saveAssignment({ meetingId: 'm1', meetingTitle: 'Kenect sync', ownerEmail: KIT, title: 'Older task', statement, status: 'new', declinedBy: [], slack: { status: 'sent', channel: THREAD.channel, ts: '1731850000.000100' } });
+  const latest = await workStore.saveAssignment({ meetingId: 'm1', meetingTitle: 'Kenect sync', ownerEmail: KIT, title: 'Latest task', statement, status: 'new', declinedBy: [], slack: { status: 'sent', channel: THREAD.channel, ts: '1731860000.000100' } });
+  const before = calls.ask.length;
+
+  await send('slack-events', event(reply({ thread_ts: undefined, text: 'What is the due date for this?' })));
+  await settle();
+  assert.equal(calls.ask.length, before + 1);
+  assert.match(posted.at(-1).text, /About \*Latest task\*, your latest assignment/);
+  assert.match(posted.at(-1).text, /keep it to one page/);
+
+  // Someone else's DM channel has nothing of Kit's in it: just the help note.
+  await send('slack-events', event(reply({ thread_ts: undefined, channel: 'DOTHER', text: 'hello?' })));
+  await settle();
+  assert.match(posted.at(-1).text, /I answer in the thread under each assignment/);
+
+  await workStore.deleteAssignment(older.id);
+  await workStore.deleteAssignment(latest.id);
+});
+
 const click = (actionId, user = 'UKIT', value = assignment.id) => {
   const payload = { type: 'block_actions', user: { id: user }, channel: { id: THREAD.channel }, message: { ts: THREAD.ts }, actions: [{ action_id: actionId, value }] };
   return `payload=${encodeURIComponent(JSON.stringify(payload))}`;

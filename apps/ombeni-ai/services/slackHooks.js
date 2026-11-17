@@ -82,6 +82,31 @@ async function handleThreadReply(event) {
   if (!found) return reply(replies.plain("I can't find this assignment anymore (a deleted sample, maybe). Your work is in My Work."));
   const assignment = await ownedAssignment(found, event.user, reply);
   if (!assignment) return;
+  return respondAbout(assignment, event, reply);
+}
+
+// The person's most recent open assignment sent to them in this DM, for a
+// message typed in the main box rather than in an assignment's thread.
+async function latestOpenAssignment(slackUserId, channel) {
+  const email = await slackService.emailOfUser(slackUserId);
+  if (!email) return null;
+  return (await workStore.assignmentsForOwner(email))
+    .filter(a => a.status !== 'done' && a.slack && a.slack.channel === channel && a.slack.ts)
+    .sort((a, b) => Number(b.slack.ts) - Number(a.slack.ts))[0] || null;
+}
+
+// A message in the main DM box: taken as being about their latest open
+// assignment, answered under their message, saying which assignment it was.
+async function handleTopLevel(event) {
+  const assignment = await latestOpenAssignment(event.user, event.channel);
+  if (!assignment) return slackService.postMessage(event.channel, event.ts, replies.HELP(myWorkLink()));
+  const reply = (message) => slackService.postMessage(event.channel, event.ts, replies.about(assignment.title, message));
+  return respondAbout(assignment, event, reply);
+}
+
+// What a reply does, wherever it came from: a draft is checked, a question
+// answered from the meeting, anything else checked as their explanation.
+async function respondAbout(assignment, event, reply) {
 
   // An attached draft: check it.
   const file = (event.files || [])[0];
@@ -134,9 +159,7 @@ async function handleEvent(event) {
   if (!event || event.type !== 'message' || event.channel_type !== 'im') return;
   if (event.bot_id || !event.user) return; // includes Ombeni's own messages
   if (event.subtype && event.subtype !== 'file_share') return; // edits, deletions...
-  if (!event.thread_ts || event.thread_ts === event.ts) {
-    return slackService.postMessage(event.channel, event.ts, replies.HELP(myWorkLink()));
-  }
+  if (!event.thread_ts || event.thread_ts === event.ts) return handleTopLevel(event);
   return handleThreadReply(event);
 }
 

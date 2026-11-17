@@ -57,4 +57,10 @@ function cleanSlackText(text) {
     .trim();
 }
 
-module.exports = { explainReply, workReply, plain, HELP, cleanSlackText };
+/** A reply that says which assignment it's about (for messages outside an assignment's thread). */
+function about(title, message) {
+  const note = { type: 'context', elements: [{ type: 'mrkdwn', text: `About *${esc(title)}*, your latest assignment. For a different one, reply in its own thread.` }] };
+  return { text: message.text, blocks: [note, ...(message.blocks || [])] };
+}
+
+module.exports = { explainReply, workReply, plain, HELP, cleanSlackText, about };
