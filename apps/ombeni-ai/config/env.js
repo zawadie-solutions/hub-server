@@ -12,8 +12,10 @@ const PREFIX = IN_HUB ? 'OMBENI_' : '';
 // value and .env changes appear to do nothing. (The hub loads its own .env.)
 if (!IN_HUB) require('dotenv').config({ override: true });
 
-const readOwn = (name) => process.env[PREFIX + name] || '';
-const read = (name) => readOwn(name) || process.env[name] || '';
+// Trimmed: a value pasted into hPanel easily picks up a space or line break,
+// which silently breaks a secret (e.g. every Slack signature check fails).
+const readOwn = (name) => (process.env[PREFIX + name] || '').trim();
+const read = (name) => readOwn(name) || (process.env[name] || '').trim();
 const MONDAY_KEY_RE = /^MONDAY_API_KEY(_\d+)?$/;
 const mondayIndex = (k) => (k === 'MONDAY_API_KEY' ? 0 : Number(k.slice('MONDAY_API_KEY_'.length)));
 const unprefixedNames = new Set(Object.keys(process.env).map(k => (k.startsWith(PREFIX) ? k.slice(PREFIX.length) : k)));

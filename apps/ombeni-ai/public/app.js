@@ -1143,12 +1143,12 @@ function workCard(a, mode) {
           <div class="work-card-title">${escapeHtml(a.title)}</div>
           <div class="list-card-meta">${escapeHtml(meta)}</div>
         </div>
-        <div class="work-tags">${mode === 'mine' ? `${a.status !== 'done' ? phase2Tag(a) : ''}${WORK_STATUS[a.status] || ''}` : '<span class="tag tag-gold">Unassigned</span>'}</div>
+        <div class="work-tags">${a.sample ? '<span class="tag tag-neutral">Sample</span>' : ''}${mode === 'mine' ? `${a.status !== 'done' ? phase2Tag(a) : ''}${WORK_STATUS[a.status] || ''}` : '<span class="tag tag-gold">Unassigned</span>'}</div>
       </div>
       ${open ? `
         <div class="work-body">
           ${statementHtml(a)}
-          <div class="work-actions">${actions}</div>
+          <div class="work-actions">${actions}${a.sample && mode === 'mine' ? `<button class="btn btn-ghost btn-sm" data-act="delete-sample" data-id="${a.id}">Delete sample</button>` : ''}</div>
           ${notes.map(n => `<div class="work-note">${escapeHtml(n)}</div>`).join('')}
           ${mode === 'mine' && state.workPanel[a.id] === 'explain' ? explainPanel(a) : ''}
           ${mode === 'mine' && state.workPanel[a.id] === 'check' ? checkPanel(a) : ''}
@@ -1241,6 +1241,16 @@ document.getElementById('workContent').addEventListener('click', async (e) => {
     return;
   }
   if (act === 'explain-send' || act === 'check-send') return sendPhase2Check(act, id, el);
+  if (act === 'delete-sample') {
+    if (!confirm('Delete this sample?')) return;
+    try {
+      await api(`/work/${id}`, { method: 'DELETE' });
+      replaceWorkItem(null, id);
+    } catch (err) {
+      alert(err.message);
+    }
+    return;
+  }
   if (act === 'not_mine' && !confirm('Give this back? It goes to the other Zawadie people from that meeting, so one of them can take it.')) return;
 
   el.disabled = true;
@@ -1455,7 +1465,15 @@ async function refreshCoworkerSettings() {
       ${toggle('morning', 'Morning message', 'Weekdays at 7:30 your time: today\'s meetings, and work that\'s due, new or needs fixing.')}
       ${toggle('prep', 'Notes before meetings', 'About 30 minutes before each meeting: what happened last time, what\'s still open, and what to ask.')}
     </div>
-    ${c.slackReady ? '' : '<div class="work-note">Slack isn\'t connected on the server yet, so nothing can be sent.</div>'}`;
+    ${c.slackReady ? '' : '<div class="work-note">Slack isn\'t connected on the server yet, so nothing can be sent.</div>'}
+    <div class="coworker-try">
+      <div>
+        <b>Try it in Slack</b>
+        <span class="work-note" style="display:block;margin-top:2px;">Ombeni makes a sample assignment from your latest recorded meeting and sends it to your Slack DM, like a real one. Press its buttons and reply in its thread to try everything. Delete it from My Work when you're done.</span>
+      </div>
+      <button class="btn btn-secondary btn-sm" id="sendSampleBtn">Send me a sample</button>
+    </div>
+    <div class="work-note" id="sampleResult"></div>`;
 
   box.querySelectorAll('[data-coworker-pref]').forEach(input => input.addEventListener('change', async () => {
     try {
@@ -1465,6 +1483,25 @@ async function refreshCoworkerSettings() {
       input.checked = !input.checked;
     }
   }));
+  const sampleBtn = document.getElementById('sendSampleBtn');
+  sampleBtn.addEventListener('click', async () => {
+    const result = document.getElementById('sampleResult');
+    sampleBtn.disabled = true;
+    sampleBtn.textContent = 'Making your sample…';
+    result.textContent = '';
+    try {
+      const { data } = await api('/work/sample', { method: 'POST' });
+      result.textContent = data.slack && data.slack.status === 'sent'
+        ? `Sent to your Slack DM: "${data.title}". It's in My Work too.`
+        : `Created in My Work, but not sent to Slack${data.slack && data.slack.reason ? `: ${data.slack.reason}` : ''}.`;
+      loadWork().catch(() => {});
+    } catch (err) {
+      result.textContent = err.message;
+    }
+    sampleBtn.disabled = false;
+    sampleBtn.textContent = 'Send me a sample';
+  });
+
   const disconnect = document.getElementById('disconnectGoogleBtn');
   if (disconnect) disconnect.addEventListener('click', async () => {
     if (!confirm('Disconnect Google? Ombeni stops reading your calendar and deletes its stored access.')) return;

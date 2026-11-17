@@ -16,6 +16,11 @@ const isResponse = (r) => r === 'not_mine' || Object.prototype.hasOwnProperty.ca
 
 /** Returns the saved assignment, or null after "not_mine" (it's no longer theirs). */
 async function respond(assignment, response, email) {
+  // A sample was only ever made for this person: giving it back just removes it.
+  if (response === 'not_mine' && assignment.sample) {
+    await workStore.deleteAssignment(assignment.id);
+    return null;
+  }
   if (response === 'not_mine') {
     // Back to the meeting's attendees, who can take it. Their own explanation
     // and checks stay private: they don't pass on with the work.

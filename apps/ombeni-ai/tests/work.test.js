@@ -7,6 +7,7 @@ const path = require('path');
 
 const storeFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ombeni-work-')), 'work-store.json');
 process.env.OMBENI_WORK_STORE_FILE = storeFile;
+process.env.OMBENI_PEOPLE_FILE = path.join(path.dirname(storeFile), 'people.json');
 process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test';
 process.env.MONDAY_API_KEY = 'test-key';
 delete process.env.STATEMENTS_FROM;
@@ -180,6 +181,50 @@ test('handing work back clears the explanation and checks, so the next person ne
   assert.equal(claimed.body.data.explained, null);
   assert.deepEqual(claimed.body.data.checks, []);
   assert.doesNotMatch(JSON.stringify(claimed.body), /my private words|mine\.docx/);
+});
+
+test('samples: made for the person asking, from their own latest meeting, sent to their Slack, deletable', async () => {
+  const statementService = require('../services/statementService');
+  const written = [];
+  statementService.writeStatements = async (m) => {
+    written.push(m.id);
+    return { assignments: [
+      { title: 'Team task', ownerEmail: null, ownerName: 'BAM team', statement: { ...statement, mustHaves: [{ text: 'a' }] } },
+      { title: 'Astrid task', ownerEmail: ASTRID, ownerName: 'Astrid', statement: { ...statement, mustHaves: [{ text: 'a' }, { text: 'b' }] } }
+    ], waitingOnClient: [] };
+  };
+  statementService.notifyOwner = async (a) => ({ status: 'sent', channel: 'D1', ts: '1.2', for: a.ownerEmail });
+  meetings[0].transcriptEntries = [{ speaker: 'Kit', at: 1, text: 'hello' }];
+
+  // Tyler only attended m2, which has no transcript.
+  assert.equal((await call(TYLER, 'POST', '/work/sample')).status, 404);
+
+  const res = await call(KIT, 'POST', '/work/sample');
+  assert.equal(res.status, 200);
+  assert.deepEqual(written, ['m1'], 'only from a meeting Kit attended');
+  const sample = res.body.data;
+  assert.equal(sample.title, '[Sample] Astrid task', 'nobody\'s work is Kit\'s, so the most detailed one');
+  assert.equal(sample.ownerEmail, KIT);
+  assert.equal(sample.sample, true);
+  assert.equal(sample.slack.for, KIT, 'sent to Kit, not Astrid');
+  assert.equal((await call(ASTRID, 'GET', '/work')).body.data.mine.some(a => a.id === sample.id), false);
+
+  // Real work can't be deleted; someone else's sample can't either.
+  assert.equal((await call(KIT, 'DELETE', `/work/${kitTask.id}`)).status, 400);
+  assert.equal((await call(ASTRID, 'DELETE', `/work/${sample.id}`)).status, 404);
+  assert.equal((await call(KIT, 'DELETE', `/work/${sample.id}`)).status, 200);
+  assert.equal(await workStore.getAssignment(sample.id), null);
+
+  // "Not mine" on a sample removes it rather than handing it to the meeting.
+  const another = (await call(KIT, 'POST', '/work/sample')).body.data;
+  await call(KIT, 'POST', `/work/${another.id}/respond`, { response: 'not_mine' });
+  assert.equal(await workStore.getAssignment(another.id), null);
+  assert.equal((await call(ASTRID, 'GET', '/work')).body.data.unassigned.some(a => a.id === another.id), false);
+
+  // At most 3 a day.
+  await call(KIT, 'POST', '/work/sample');
+  await call(KIT, 'POST', '/work/sample');
+  assert.equal((await call(KIT, 'POST', '/work/sample')).status, 429);
 });
 
 test('a recording with no attendee list is visible to nobody; demo meetings stay open', () => {

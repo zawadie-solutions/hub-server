@@ -72,7 +72,7 @@ async function buildPrep(person, event, timeZone) {
   const related = plan.relatedMeetings(event, meetingsAttendedBy(person.email));
   const relatedIds = new Set(related.map(m => m.id));
   const mine = (await workStore.assignmentsForOwner(person.email))
-    .filter(a => relatedIds.has(a.meetingId) && a.status !== 'done');
+    .filter(a => relatedIds.has(a.meetingId) && a.status !== 'done' && !a.sample);
   const waiting = (await workStore.getBriefs([...relatedIds])).flatMap(b => b.waitingOnClient || []);
   const ai = await aiPrepNotes(event, related, mine, waiting, person.name);
   return plan.prepMessage({ event: { ...event, self: person.email }, timeZone, related, mine, waiting, ai, link: link('work') });
@@ -109,7 +109,8 @@ async function runForPerson(person, now) {
     record = await people.update(person.email, { lastMorningDate: plan.localParts(now, timeZone).date });
     const message = plan.morningMessage({
       name: record.name, email: record.email, timeZone, now, events,
-      work: await workStore.assignmentsForOwner(record.email), link: link('work')
+      // Samples are for trying Ombeni out, not real work to remind anyone of.
+      work: (await workStore.assignmentsForOwner(record.email)).filter(a => !a.sample), link: link('work')
     });
     if (message) await send(record.email, message, 'Morning message');
   }
