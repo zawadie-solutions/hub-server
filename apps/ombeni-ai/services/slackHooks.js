@@ -16,6 +16,8 @@ const statementService = require('./statementService');
 const openaiService = require('./openaiService');
 const { extractText, imageOf, WORK_SUPPORTED } = require('./fileParser');
 const replies = require('./slackReplies');
+const people = require('../data/people');
+const gmailService = require('./gmailService');
 
 const MAX_AGE_S = 5 * 60;
 
@@ -159,10 +161,39 @@ async function respondAbout(assignment, event, reply) {
   }
 }
 
+// Same as Ask Ombeni on the web, for a meeting count that keeps the prompt small.
+const MAX_CONTEXT_MEETINGS = 15;
+
+// "Draft an email to...": written by Ombeni's chat with the person's own Gmail
+// drafts tool (their stored Google connection) and only meetings they were in.
+// Answered under their message, in the thread it was asked in.
+async function handleDraftRequest(event) {
+  const reply = (message) => slackService.postMessage(event.channel, event.thread_ts || event.ts, message);
+  const email = await slackService.emailOfUser(event.user);
+  if (!email) return reply(replies.plain('I couldn\'t tell who you are from Slack, so I can\'t use your Gmail. Ask me in Ombeni instead.'));
+  const tokens = people.googleTokens(await people.get(email));
+  const meetings = (await store.ensureFreshMeetings())
+    .filter(m => store.isAuthorizedForMeeting(m, email))
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    .slice(0, MAX_CONTEXT_MEETINGS);
+  try {
+    const { reply: answer } = await openaiService.handleChat(
+      [{ role: 'user', content: replies.cleanSlackText(event.text).slice(0, 4000) }],
+      { meetings, ...gmailService.draftOptions(tokens) }
+    );
+    return reply(replies.chatReply(answer));
+  } catch (err) {
+    console.error('⚠️ Slack email draft failed:', err.message);
+    return reply(replies.plain(AI_DOWN));
+  }
+}
+
 async function handleEvent(event) {
   if (!event || event.type !== 'message' || event.channel_type !== 'im') return;
   if (event.bot_id || !event.user) return; // includes Ombeni's own messages
   if (event.subtype && event.subtype !== 'file_share') return; // edits, deletions...
+  // Asking for an email is never about an assignment's explanation or check.
+  if (!(event.files || []).length && replies.isDraftRequest(replies.cleanSlackText(event.text))) return handleDraftRequest(event);
   if (!event.thread_ts || event.thread_ts === event.ts) return handleTopLevel(event);
   return handleThreadReply(event);
 }

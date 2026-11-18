@@ -23,13 +23,26 @@
 
         <% if (token) { %>
         <form method="POST" action="/invite/<%= token %>" class="form" novalidate>
+          <%# The email box tells browsers and phones which account this new password is for, so they save it under the right email. The server ignores it. %>
+          <label class="field">
+            <span>Work email</span>
+            <input class="input" type="email" name="username" value="<%= email %>" autocomplete="username" readonly />
+          </label>
           <label class="field">
             <span>Password</span>
-            <input class="input" type="password" name="password" minlength="8" placeholder="At least 8 characters" required autofocus />
+            <span class="password-wrap">
+              <input class="input" type="password" name="password" minlength="8" placeholder="At least 8 characters" autocomplete="new-password" required autofocus />
+              <button type="button" class="password-toggle" aria-label="Show password" aria-pressed="false" hidden>Show</button>
+            </span>
+            <span class="password-hint" role="status" hidden>Caps Lock is on.</span>
           </label>
           <label class="field">
             <span>Confirm password</span>
-            <input class="input" type="password" name="confirm" minlength="8" required />
+            <span class="password-wrap">
+              <input class="input" type="password" name="confirm" minlength="8" autocomplete="new-password" required />
+              <button type="button" class="password-toggle" aria-label="Show password" aria-pressed="false" hidden>Show</button>
+            </span>
+            <span class="password-hint" role="status" hidden>Caps Lock is on.</span>
           </label>
           <button class="btn btn-primary btn-block" type="submit">Activate account</button>
         </form>
@@ -40,5 +53,6 @@
     </main>
   </div>
 
+  <script src="/js/password.js"></script>
 </body>
 </html>

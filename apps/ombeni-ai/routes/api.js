@@ -386,16 +386,9 @@ router.post('/chat', async (req, res) => {
       // Monday tasks: only for people who connected their own Monday, on a
       // board they named.
       mondayTask: (await mondayAuth.tokenFor(currentEmail(req))) ? (args) => myMonday.createMyTask(currentEmail(req), args) : null,
-      // Drafts in their own Gmail, only if they allowed it.
-      draftEmail: authService.canDraftEmail(tokens)
-        ? (email) => gmailService.createDraft(tokens, { to: email.to || [], subject: email.subject, body: email.body })
-        : null,
-      // When drafts can't be saved, the exact reason, so Ombeni can say what to do.
-      draftEmailUnavailable: authService.canDraftEmail(tokens)
-        ? null
-        : !tokens
-          ? 'Google isn\'t connected for this person. They connect it in Settings > Your co-worker > Connect Google, then click Allow Gmail drafts.'
-          : 'Google is connected, but the Gmail drafts permission wasn\'t granted. In Settings > Your co-worker they click Allow Gmail drafts, and on Google\'s screen they must tick the box for Gmail ("Manage drafts and send emails"); if it\'s left unticked, Google grants everything except Gmail.'
+      // Drafts in their own Gmail, only if they allowed it; otherwise the
+      // exact reason, so Ombeni can say what to do.
+      ...gmailService.draftOptions(tokens)
     });
 
     res.json({ success: true, reply, sourcesUsed });

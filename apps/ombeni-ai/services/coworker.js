@@ -68,6 +68,80 @@ ${context}`
   }
 }
 
+const RECENT_DAYS = 14;
+const RECENT_MEETINGS = 6;
+
+// Ideas for the morning message when someone has fewer than four open tasks,
+// grounded in their own recent meetings, today's calendar and their work.
+// Never blocks the message: if the AI fails, it goes without ideas.
+async function aiIdeas(person, count, { events, open, today }) {
+  if (!env.isOpenAIConfigured || count <= 0) return [];
+  const since = new Date(Date.parse(`${today}T12:00:00Z`) - RECENT_DAYS * 86400000).toISOString().slice(0, 10);
+  const recent = meetingsAttendedBy(person.email)
+    .filter(m => String(m.date || '') >= since)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+    .slice(0, RECENT_MEETINGS);
+  const waiting = recent.length ? (await workStore.getBriefs(recent.map(m => m.id))).flatMap(b => b.waitingOnClient || []) : [];
+  const meetings = recent.map(m => {
+    const a = m.analysis || {};
+    return [
+      `MEETING: ${m.title} (${m.date})`,
+      a.summary ? `Summary: ${String(a.summary).slice(0, 800)}` : '',
+      (a.decisions || []).length ? `Decisions: ${a.decisions.slice(0, 6).join(' | ')}` : ''
+    ].filter(Boolean).join('\n');
+  }).join('\n\n');
+
+  try {
+    const response = await client().chat.completions.create({
+      model: MODEL,
+      temperature: 0.5,
+      response_format: { type: 'json_object' },
+      messages: [{
+        role: 'user',
+        content: `You are Ombeni, a co-worker at Zawadie Solutions. Suggest exactly ${count} idea(s) for ${person.name || 'this employee'} to work on today that would add real value to the company.
+They are reading this: write TO them, using "you". Never write their name.
+Each idea must:
+- be something one person can make real progress on in a day,
+- build on the meetings, clients and open work below where possible (follow up, unblock, improve a process, prepare, document, share what was learned),
+- not repeat a task they already have.
+If there is little context, suggest sensible ideas for an employee of a services company (client follow-ups, process improvements, documentation, learning the team can reuse).
+Keep it professional and specific. Plain text, no Markdown, no emoji.
+Return JSON: { "ideas": [{ "title": "short action, at most 8 words", "why": "one sentence, at most 25 words, on the value to the company" }] }
+
+TODAY'S MEETINGS:
+${events.map(e => `- ${e.title}`).join('\n') || '(none)'}
+
+THEIR OPEN WORK:
+${open.map(a => `- ${a.title}`).join('\n') || '(none)'}
+
+WAITING ON CLIENTS:
+${waiting.map(w => `- ${w.who ? `${w.who}: ` : ''}${w.what}`).join('\n') || '(none)'}
+
+THEIR RECENT MEETINGS:
+${meetings || '(none recorded)'}`
+      }]
+    });
+    const raw = JSON.parse(response.choices[0].message.content);
+    const text = (v, max) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '');
+    return (Array.isArray(raw.ideas) ? raw.ideas : [])
+      .map(i => ({ title: text(i && i.title, 120), why: text(i && i.why, 300) }))
+      .filter(i => i.title)
+      .slice(0, count);
+  } catch (err) {
+    console.error('⚠️ Morning ideas AI failed, sending without them:', err.message);
+    return [];
+  }
+}
+
+async function buildMorning(person, now, timeZone, events) {
+  // Samples are for trying Ombeni out, not real work to remind anyone of.
+  const work = (await workStore.assignmentsForOwner(person.email)).filter(a => !a.sample);
+  const today = plan.localParts(now, timeZone).date;
+  const todays = events.filter(e => !e.declined && (e.isAllDay ? e.start.slice(0, 10) === today : plan.localParts(new Date(e.start), timeZone).date === today));
+  const ideas = await aiIdeas(person, plan.ideasWanted(work), { events: todays, open: work.filter(a => a.status !== 'done'), today });
+  return plan.morningMessage({ name: person.name, email: person.email, timeZone, now, events, work, ideas, link: link('work') });
+}
+
 async function buildPrep(person, event, timeZone) {
   const related = plan.relatedMeetings(event, meetingsAttendedBy(person.email));
   const relatedIds = new Set(related.map(m => m.id));
@@ -107,12 +181,7 @@ async function runForPerson(person, now) {
   if (plan.shouldSendMorning(record, now, timeZone)) {
     // Recorded first, so a crash can't send it twice.
     record = await people.update(person.email, { lastMorningDate: plan.localParts(now, timeZone).date });
-    const message = plan.morningMessage({
-      name: record.name, email: record.email, timeZone, now, events,
-      // Samples are for trying Ombeni out, not real work to remind anyone of.
-      work: (await workStore.assignmentsForOwner(record.email)).filter(a => !a.sample), link: link('work')
-    });
-    if (message) await send(record.email, message, 'Morning message');
+    await send(record.email, await buildMorning(record, now, timeZone, events), 'Morning message');
   }
 
   const due = plan.eventsNeedingPrep(events, record, now);
@@ -150,4 +219,4 @@ function start() {
   setInterval(() => tick().catch(err => console.error('⚠️ Co-worker tick failed:', err.message)), EVERY_MS);
 }
 
-module.exports = { start, tick, runForPerson, buildPrep };
+module.exports = { start, tick, runForPerson, buildPrep, buildMorning };

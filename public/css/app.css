@@ -148,6 +148,19 @@ h1, h2, h3 { font-weight: 700; letter-spacing: -0.01em; margin: 0; }
 }
 .input::placeholder { color: var(--color-text-softer); }
 .input:focus { outline: none; border-color: var(--color-accent-300); box-shadow: 0 0 0 3px var(--color-accent-100); }
+.input[readonly] { background: var(--color-neutral-100); color: var(--color-text-soft); }
+
+/* Password box with a Show/Hide button inside it (see public/js/password.js). */
+.password-wrap { position: relative; }
+.password-wrap .input { padding-right: 72px; }
+.password-toggle {
+  position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+  font-family: inherit; font-size: 12px; font-weight: 600; color: var(--color-accent-700);
+  background: transparent; border: 0; border-radius: 6px; padding: 6px 10px; cursor: pointer;
+}
+.password-toggle:hover { background: var(--color-accent-100); }
+.password-toggle:focus-visible { outline: 2px solid var(--color-accent-300); outline-offset: 1px; }
+.password-hint { font-size: 12px; font-weight: 600; color: var(--color-amber-700); }
 
 .form-error {
   background: var(--color-red-100); color: var(--color-red-600);

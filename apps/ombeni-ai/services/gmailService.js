@@ -3,6 +3,7 @@
 // Gmail themselves.
 const { OAuth2Client } = require('google-auth-library');
 const env = require('../config/env');
+const authService = require('./authService');
 
 async function accessToken(googleTokens) {
   const client = new OAuth2Client(env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET, env.GOOGLE_REDIRECT_URI);
@@ -54,4 +55,18 @@ async function createDraft(googleTokens, { to, cc, subject, body }) {
   }
 }
 
-module.exports = { createDraft, rawMessage, EMAIL_RE };
+/**
+ * What handleChat needs for Gmail drafts, from the person's Google connection:
+ * draftEmail when they allowed drafts, otherwise the reason they can't.
+ */
+function draftOptions(googleTokens) {
+  const allowed = authService.canDraftEmail(googleTokens);
+  return {
+    draftEmail: allowed
+      ? (email) => createDraft(googleTokens, { to: Array.isArray(email.to) ? email.to : [email.to].filter(Boolean), subject: email.subject, body: email.body })
+      : null,
+    draftEmailUnavailable: allowed ? null : authService.draftEmailUnavailable(googleTokens)
+  };
+}
+
+module.exports = { createDraft, rawMessage, draftOptions, EMAIL_RE };

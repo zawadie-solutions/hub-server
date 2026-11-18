@@ -44,13 +44,14 @@ const plain = (text) => ({ text, blocks: [section(esc(text))] });
 
 const HELP = (link) => ({
   text: 'Reply under an assignment',
-  blocks: [section(`I answer in the thread under each assignment I send you: explain what you'll deliver, ask a question (end with *?*), or attach your draft or a picture of it to check it.\nAll your work is in <${link}|My Work>.`)]
+  blocks: [section(`I answer in the thread under each assignment I send you: explain what you'll deliver, ask a question (end with *?*), or attach your draft or a picture of it to check it.\nYou can also ask me here to draft an email, and I'll save it in your Gmail drafts.\nAll your work is in <${link}|My Work>.`)]
 });
 
 /** Slack's message text, back to what the person typed. */
 function cleanSlackText(text) {
   return String(text || '')
     .replace(/<@[A-Z0-9]+>/g, '')
+    .replace(/<mailto:([^|>]+)(?:\|[^>]+)?>/g, '$1')
     .replace(/<(https?:[^|>]+)\|([^>]+)>/g, '$2')
     .replace(/<(https?:[^>]+)>/g, '$1')
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
@@ -63,4 +64,19 @@ function about(title, message) {
   return { text: message.text, blocks: [note, ...(message.blocks || [])] };
 }
 
-module.exports = { explainReply, workReply, plain, HELP, cleanSlackText, about };
+// "Draft an email to Wendy...", "Can you write a follow-up for...": asking
+// Ombeni for an email. Only a request (it starts with the ask), so an
+// explanation like "I'll write the recap email by Friday" isn't taken for one.
+const DRAFT_REQUEST = /^(?:(?:hi|hey|hello)\b[\s,!.]*)?(?:ombeni\b[\s,:!.]*)?(?:(?:please|pls|kindly|can you|could you|would you|will you|help me)\b[\s,]*)*(?:draft|write|compose|create|prepare|put together)\b[^?!\n]{0,80}?\b(?:e-?mails?|drafts?|follow[- ]?ups?|recaps?|repl(?:y|ies))\b/i;
+const isDraftRequest = (text) => DRAFT_REQUEST.test(String(text || '').trim());
+
+/** Ombeni's chat answer (Markdown) as a Slack message: links and bold in Slack's own format. */
+function chatReply(markdown) {
+  const text = esc(markdown)
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<$2|$1>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '*$1*')
+    .replace(/^#{1,6}\s+(.+)$/gm, '*$1*');
+  return { text: String(markdown || '').slice(0, 2900), blocks: [section(text)] };
+}
+
+module.exports = { explainReply, workReply, plain, HELP, cleanSlackText, about, isDraftRequest, chatReply };
