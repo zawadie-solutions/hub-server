@@ -34,6 +34,14 @@ function getAuthUrl({ gmail = false } = {}) {
 
 const canDraftEmail = (googleTokens) => Boolean(googleTokens && String(googleTokens.scope || '').includes('gmail.compose'));
 
+/** Why Gmail drafts can't be saved for this person, in words they can act on; null when they can. */
+function draftEmailUnavailable(googleTokens) {
+  if (canDraftEmail(googleTokens)) return null;
+  return !googleTokens
+    ? 'Google isn\'t connected for this person. They connect it in Settings > Your co-worker > Connect Google, then click Allow Gmail drafts.'
+    : 'Google is connected, but the Gmail drafts permission wasn\'t granted. In Settings > Your co-worker they click Allow Gmail drafts, and on Google\'s screen they must tick the box for Gmail ("Manage drafts and send emails"); if it\'s left unticked, Google grants everything except Gmail.';
+}
+
 /**
  * Exchanges an OAuth redirect "code" for the signed-in user's verified
  * identity plus their Google tokens. Returns:
@@ -65,4 +73,4 @@ async function exchangeCodeForUser(code) {
   return { user, googleTokens };
 }
 
-module.exports = { isConfigured, getAuthUrl, exchangeCodeForUser, canDraftEmail };
+module.exports = { isConfigured, getAuthUrl, exchangeCodeForUser, canDraftEmail, draftEmailUnavailable };
