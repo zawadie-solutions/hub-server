@@ -252,8 +252,8 @@ router.post('/meetings/:id/recap-draft', async (req, res) => {
       return res.status(502).json({ success: false, error: 'Ombeni couldn\'t write the recap just now. Try again in a minute.' });
     }
 
-    const draft = await gmailService.createDraft(tokens, { to: clients, subject: email.subject, body: email.body });
-    if (!draft.created) return res.status(502).json({ success: false, error: draft.reason, needsGmail: /allowed/.test(draft.reason) });
+    const draft = await gmailService.createDraftFor(currentEmail(req), tokens, { to: clients, subject: email.subject, body: email.body });
+    if (!draft.created) return res.status(502).json({ success: false, error: draft.reason, needsGmail: ['no_gmail_permission', 'reconnect'].includes(draft.problem) });
     res.json({ success: true, data: { link: draft.link, to: clients, subject: email.subject } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -388,7 +388,7 @@ router.post('/chat', async (req, res) => {
       mondayTask: (await mondayAuth.tokenFor(currentEmail(req))) ? (args) => myMonday.createMyTask(currentEmail(req), args) : null,
       // Drafts in their own Gmail, only if they allowed it; otherwise the
       // exact reason, so Ombeni can say what to do.
-      ...gmailService.draftOptions(tokens)
+      ...gmailService.draftOptions(tokens, currentEmail(req))
     });
 
     res.json({ success: true, reply, sourcesUsed });
