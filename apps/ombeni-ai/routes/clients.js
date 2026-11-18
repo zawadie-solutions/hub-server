@@ -24,6 +24,18 @@ async function myClients(email) {
   return clients.withoutDeleted(clients.listClients(myMeetings(email)), await deletedBy(email));
 }
 
+// What the Clients page gets: the list, and the clients deleted from it (for
+// "Deleted by mistake?" and Undo).
+async function listResponse(email) {
+  const all = clients.listClients(myMeetings(email));
+  const deleted = await deletedBy(email);
+  return {
+    success: true,
+    data: clients.withoutDeleted(all, deleted),
+    deleted: all.filter(c => clients.isDeleted(c, deleted)).map(c => ({ key: c.key, meetings: c.meetings, lastDate: c.lastDate, deletedOn: deleted[c.key] }))
+  };
+}
+
 // A client's meetings that the person attended, or [] if they deleted that client.
 async function myClientMeetings(email, key) {
   const meetings = clients.meetingsFor(key, myMeetings(email));
@@ -33,7 +45,7 @@ async function myClientMeetings(email, key) {
 
 router.get('/', async (req, res) => {
   try {
-    res.json({ success: true, data: await myClients(me(req)) });
+    res.json(await listResponse(me(req)));
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -45,10 +57,10 @@ const summaries = new Map();
 const SUMMARY_TTL_MS = 24 * 3600 * 1000;
 const summaryKey = (email, key, meetings) => `${email}|${key}|${meetings.map(m => m.id).join(',')}`;
 
-// Delete a client from your list (e.g. you no longer work with them). No undo.
-// Only your list changes: the meeting recordings stay in Meetings, and your
+// Delete a client from your list (e.g. you no longer work with them). Only
+// your list changes: the meeting recordings stay in Meetings, and your
 // colleagues keep their own lists. A new meeting with them after today brings
-// them back as a client.
+// them back as a client; so does bringing them back by hand (below).
 router.delete('/:key', async (req, res) => {
   try {
     const email = me(req);
@@ -59,7 +71,22 @@ router.delete('/:key', async (req, res) => {
     const deletedClients = { ...(await deletedBy(email)), [key]: new Date().toISOString().slice(0, 10) };
     await people.update(email, { deletedClients });
     for (const cacheKey of summaries.keys()) if (cacheKey.startsWith(`${email}|${key}|`)) summaries.delete(cacheKey);
-    res.json({ success: true, data: await myClients(email) });
+    res.json(await listResponse(email));
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Bring back a client deleted by mistake (Undo, or "Deleted by mistake?").
+router.post('/:key/restore', async (req, res) => {
+  try {
+    const email = me(req);
+    const key = String(req.params.key).toLowerCase();
+    const deletedClients = { ...(await deletedBy(email)) };
+    if (!deletedClients[key]) return res.status(404).json({ success: false, error: 'That client isn\'t deleted.' });
+    delete deletedClients[key];
+    await people.update(email, { deletedClients });
+    res.json(await listResponse(email));
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

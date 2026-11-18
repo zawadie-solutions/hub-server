@@ -50,17 +50,29 @@ const call = (user, method, url) => fetch(`${base}${url}`, { method, headers: us
   .then(async r => ({ status: r.status, body: await r.json().catch(() => null) }));
 const keys = (body) => body.data.map(c => c.key);
 
-test('deleting a client takes it off your list for good', async () => {
+test('deleting a client takes it off your list', async () => {
   const res = await call(KIT, 'DELETE', '/api/clients/fathom.video');
   assert.equal(res.status, 200);
   assert.deepEqual(keys(res.body), ['tideyocean.org', 'tedtyree@gmail.com', 'nanoshieldutah.com']);
-  assert.equal(res.body.removed, undefined, 'no list of deleted clients to restore from');
+  assert.deepEqual(res.body.deleted, [{ key: 'fathom.video', meetings: 1, lastDate: '2026-09-18', deletedOn: new Date().toISOString().slice(0, 10) }], 'for Undo and "Deleted by mistake?"');
 
   assert.deepEqual(keys((await call(KIT, 'GET', '/api/clients')).body), ['tideyocean.org', 'tedtyree@gmail.com', 'nanoshieldutah.com'], 'still gone on the next visit');
   assert.equal((await call(KIT, 'GET', '/api/clients/fathom.video')).status, 404, 'its page is gone too');
   assert.equal((await call(KIT, 'POST', '/api/clients/fathom.video/summary')).status, 404);
-  assert.equal((await call(KIT, 'POST', '/api/clients/fathom.video/restore')).status, 404, 'no undo');
   assert.equal((await call(KIT, 'DELETE', '/api/clients/fathom.video')).status, 404, 'already deleted');
+});
+
+test('a client deleted by mistake can be brought back', async () => {
+  await call(KIT, 'DELETE', '/api/clients/tideyocean.org');
+  assert.ok(!keys((await call(KIT, 'GET', '/api/clients')).body).includes('tideyocean.org'));
+
+  const back = await call(KIT, 'POST', '/api/clients/tideyocean.org/restore');
+  assert.equal(back.status, 200);
+  assert.deepEqual(keys(back.body), ['tideyocean.org', 'tedtyree@gmail.com', 'nanoshieldutah.com']);
+  assert.deepEqual(back.body.deleted.map(c => c.key), ['fathom.video']);
+  assert.equal((await call(KIT, 'GET', '/api/clients/tideyocean.org')).status, 200, 'its page is back');
+  assert.equal((await call(KIT, 'POST', '/api/clients/tideyocean.org/restore')).status, 404, 'not deleted any more');
+  assert.equal((await call(TYLER, 'POST', '/api/clients/fathom.video/restore')).status, 404, 'only your own deletions');
 });
 
 test('only your list changes: the meetings stay, and colleagues keep the client', async () => {
