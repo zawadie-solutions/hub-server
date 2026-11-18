@@ -64,19 +64,27 @@ test('morning message: sent once, at 7:30+ on a weekday, with today\'s meetings 
   assert.equal(sent.length, 1, 'not twice the same day');
 });
 
-test('prep notes: sent once before the meeting, built only from meetings the person attended', async () => {
+test('prep notes: sent once before the meeting, built only from earlier sessions of it that the person attended', async () => {
   sent.length = 0;
   const now = new Date('2026-11-17T14:30:00Z');
-  calendar = { timeZone: 'UTC', events: [{ id: 'e1', title: 'Kenect check-in', start: soon(now, 25), isAllDay: false, declined: false, attendees: [KIT, 'wendy@kenect.com'] }] };
+  calendar = { timeZone: 'UTC', events: [
+    { id: 'e1', title: 'Kenect quarterly', start: soon(now, 25), isAllDay: false, declined: false, attendees: [KIT, 'wendy@kenect.com'] },
+    // Same client, different meeting: nothing from "Kenect quarterly" goes into its notes.
+    { id: 'e3', title: 'Kenect check-in', start: soon(now, 30), isAllDay: false, declined: false, attendees: [KIT, 'wendy@kenect.com'] }
+  ] };
   await coworker.runForPerson(await people.get(KIT), now);
-  assert.equal(sent.length, 1);
-  assert.match(sent[0].text, /Prep: Kenect check-in/);
-  assert.match(sent[0].text, /Based on:.*Kenect quarterly/);
-  assert.match(sent[0].text, /Still open on your side.*Send weekly report/);
-  assert.doesNotMatch(sent[0].text, /SECRET|Tyler only/, 'nothing from Tyler\'s meeting or work');
+  assert.equal(sent.length, 2);
+  const [quarterly, checkIn] = sent.map(s => s.text);
+  assert.match(quarterly, /Prep: Kenect quarterly/);
+  assert.match(quarterly, /Earlier sessions:\* Wed, Nov 4/);
+  assert.match(quarterly, /Still open on your side.*Send weekly report/);
+  assert.doesNotMatch(quarterly, /SECRET|Tyler only/, 'nothing from Tyler\'s meeting or work');
+  assert.match(checkIn, /Prep: Kenect check-in/);
+  assert.match(checkIn, /No earlier recording of this meeting/);
+  assert.doesNotMatch(checkIn, /Kenect quarterly|Send weekly report|Earlier sessions/);
 
   await coworker.runForPerson(await people.get(KIT), new Date('2026-11-17T14:35:00Z'));
-  assert.equal(sent.length, 1, 'not twice for the same meeting');
+  assert.equal(sent.length, 2, 'not twice for the same meeting');
 });
 
 test('switched off means nothing is sent', async () => {

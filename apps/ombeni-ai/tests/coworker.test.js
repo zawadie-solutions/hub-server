@@ -81,22 +81,26 @@ test('old prep records are dropped after three days', () => {
 
 const m = (id, o) => ({ id, title: 'Weekly sync', date: '2026-11-01', participants: [], externalDomains: [], ...o });
 
-test('related meetings: same client, same recurring meeting, or mostly the same people', () => {
+test('prep notes use only earlier sessions of the same meeting', () => {
+  const team = [KIT, 'a@zawadie.com', 'b@zawadie.com', 'c@zawadie.com'];
   const meetings = [
-    m('kenect-old', { date: '2026-10-01', participants: [KIT, 'wendy@kenect.com'] }),
-    m('kenect-new', { date: '2026-11-04', participants: [KIT, 'jess@kenect.com'] }),
-    m('other-client', { participants: [KIT, 'x@acme.com'] }),
-    m('gmail-alice', { participants: [KIT, 'alice@gmail.com'] }),
-    m('gmail-bob', { participants: [KIT, 'bob@gmail.com'] }),
-    m('huddle', { title: 'Department Huddle 11/10', participants: [KIT, 'a@zawadie.com'] }),
-    m('team', { title: 'Something else', participants: [KIT, 'a@zawadie.com', 'b@zawadie.com'] })
+    // The case from Slack: the same people, but a different meeting.
+    m('dept-1', { title: 'Department Huddle', date: '2026-11-16', participants: team }),
+    m('dept-2', { title: 'Department Huddle', date: '2026-11-02', participants: team }),
+    m('ai-1', { title: 'AI integration Huddle', date: '2026-11-11', participants: team }),
+    m('ai-2', { title: 'AI Integration Huddle - 11/04', date: '2026-11-04', participants: [KIT, 'a@zawadie.com'] }),
+    m('ai-0', { title: 'AI integration huddle', date: '2026-10-28', participants: team }),
+    m('ai-old', { title: 'AI integration Huddle', date: '2026-10-21', participants: team }),
+    // Clients: the same meeting with the same client only.
+    m('kenect-sync', { title: 'Kenect sync', date: '2026-11-04', participants: [KIT, 'jess@kenect.com'] }),
+    m('kenect-pricing', { title: 'Kenect pricing', date: '2026-11-10', participants: [KIT, 'wendy@kenect.com'] }),
+    m('acme-sync', { title: 'Kenect sync', date: '2026-11-12', participants: [KIT, 'x@acme.com'] })
   ];
-  assert.deepEqual(plan.relatedMeetings(event(), meetings).map(x => x.id), ['kenect-new', 'kenect-old']);
-  assert.deepEqual(plan.relatedMeetings(event({ attendees: [KIT, 'alice@gmail.com'] }), meetings).map(x => x.id), ['gmail-alice'], 'free mail is matched per person, not per domain');
-  assert.deepEqual(plan.relatedMeetings(event({ title: 'Department Huddle 11/17', attendees: [KIT, 'z@zawadie.com'] }), meetings).map(x => x.id), ['huddle']);
-  // Both share at least 60% of the people (2 of 3, 3 of 3).
-  assert.deepEqual(plan.relatedMeetings(event({ title: 'New topic', attendees: [KIT, 'a@zawadie.com', 'b@zawadie.com'] }), meetings).map(x => x.id), ['huddle', 'team']);
-  assert.deepEqual(plan.relatedMeetings(event({ title: 'New topic', attendees: [KIT, 'a@zawadie.com', 'b@zawadie.com', 'c@zawadie.com', 'd@zawadie.com', 'e@zawadie.com'] }), meetings).map(x => x.id), [], 'at most half the people in common');
+  const ai = event({ title: 'AI integration Huddle', attendees: team });
+  assert.deepEqual(plan.relatedMeetings(ai, meetings).map(x => x.id), ['ai-1', 'ai-2', 'ai-0'], 'newest 3, case, dates and punctuation aside; no Department Huddle');
+  assert.deepEqual(plan.relatedMeetings(event({ title: 'New topic', attendees: team }), meetings), [], 'nothing borrowed from meetings with the same people');
+  assert.deepEqual(plan.relatedMeetings(event(), meetings).map(x => x.id), ['kenect-sync'], 'not Kenect pricing, not another client\'s "Kenect sync"');
+  assert.deepEqual(plan.relatedMeetings(event({ title: '' }), meetings), []);
 });
 
 // ---- messages ----
@@ -165,9 +169,11 @@ test('the morning message lists today\'s meetings and work that is overdue, due 
   assert.match(all, /Last check found things to fix.*Fix me/);
 });
 
-test('prep notes say when it\'s the first meeting with a client', () => {
-  const msg = plan.prepMessage({ event: { ...event(), self: KIT }, timeZone: 'UTC', related: [], mine: [], waiting: [], ai: null, link: 'x' });
-  assert.match(JSON.stringify(msg.blocks), /First recorded meeting with this client/);
+test('prep notes say when there\'s no earlier recording of the meeting, and list the sessions they use', () => {
+  const none = plan.prepMessage({ event: { ...event(), self: KIT }, timeZone: 'UTC', related: [], mine: [], waiting: [], ai: null, link: 'x' });
+  assert.match(JSON.stringify(none.blocks), /No earlier recording of this meeting/);
+  const some = plan.prepMessage({ event: { ...event(), self: KIT }, timeZone: 'UTC', related: [m('a', { title: 'Kenect sync', date: '2026-11-16' }), m('b', { title: 'Kenect sync', date: '2026-11-02' })], mine: [], waiting: [], ai: null, link: 'x' });
+  assert.match(JSON.stringify(some.blocks), /\*Earlier sessions:\* Mon, Nov 16, Mon, Nov 2/);
 });
 
 // ---- Gmail drafts ----
