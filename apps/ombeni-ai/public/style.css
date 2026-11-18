@@ -339,7 +339,8 @@ button, input { font-family: inherit; font-size: inherit; }
 .work-card-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
 .work-tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex-shrink: 0; }
 .work-body { margin-top: 12px; border-top: 1px solid var(--ombeni-border); padding-top: 4px; }
-.work-outcome { font-size: 14.5px; font-weight: 600; line-height: 1.6; margin-top: 10px; }
+/* "What does success look like?": the one-sentence answer, quoted */
+.work-outcome { font-size: 14.5px; font-weight: 600; font-style: italic; line-height: 1.6; margin: 0; padding: 2px 0 2px 12px; border-left: 3px solid var(--ombeni-magenta); }
 .work-points { list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 1.55; }
 .work-points li { padding-left: 16px; position: relative; }
 .work-points li::before { content: ''; position: absolute; left: 0; top: 0.6em; width: 6px; height: 6px; border-radius: 50%; background: var(--ombeni-magenta); }

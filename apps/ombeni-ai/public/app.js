@@ -975,7 +975,7 @@ function statementHtml(a) {
   const s = a.statement;
   const due = dueLabel(s);
   return `
-    ${s.outcome ? `<div class="work-outcome">${escapeHtml(s.outcome)}</div>` : ''}
+    ${s.outcome ? `<div class="detail-section-title">What does success look like?</div><blockquote class="work-outcome">"${escapeHtml(s.outcome)}"</blockquote>` : ''}
     ${s.mustHaves.length ? `<div class="detail-section-title">Must have</div>${workPoints(s.mustHaves)}` : ''}
     ${s.avoid.length ? `<div class="detail-section-title">Avoid</div>${workPoints(s.avoid, 'avoid')}` : ''}
     <div class="work-facts">
