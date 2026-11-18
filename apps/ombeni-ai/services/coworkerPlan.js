@@ -54,22 +54,20 @@ function prunePrepped(prepped, now) {
 const normTitle = (t) => String(t || '').toLowerCase().replace(/\d{1,4}[/.-]\d{1,2}([/.-]\d{1,4})?/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 
 /**
- * Past recorded meetings that matter for an upcoming one: the same client
- * (an outside email domain in common), a recurring meeting (same title), or
- * mostly the same Zawadie people. `meetings` must already be only the ones
- * this person attended. Newest first.
+ * Earlier recordings of the SAME meeting as an upcoming one, so prep notes are
+ * only about the meeting ahead: the same title (dates and punctuation aside)
+ * and, for a client meeting, the same client too. Never other meetings that
+ * just share people or a client (e.g. "Department Huddle" for "AI integration
+ * Huddle"). `meetings` must already be only the ones this person attended.
+ * Newest first.
  */
 function relatedMeetings(event, meetings) {
-  const external = new Set(clientKeys(event.attendees));
-  const internal = new Set(event.attendees.filter(a => isCompanyEmail(a)));
   const title = normTitle(event.title);
+  if (!title) return [];
+  const external = new Set(clientKeys(event.attendees));
   return meetings
-    .filter(m => {
-      if (external.size) return clientKeys(m.participants).some(k => external.has(k));
-      if (title && normTitle(m.title) === title) return true;
-      const overlap = (m.participants || []).filter(p => internal.has(p)).length;
-      return internal.size >= 2 && overlap >= 2 && overlap / internal.size >= 0.6;
-    })
+    .filter(m => normTitle(m.title) === title)
+    .filter(m => !external.size || clientKeys(m.participants).some(k => external.has(k)))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)))
     .slice(0, RELATED_MEETINGS);
 }
@@ -189,10 +187,10 @@ function prepMessage({ event, timeZone, related, mine, waiting, ai, link }) {
 
   if (!related.length) {
     blocks.push(section(outside.length
-      ? '*First recorded meeting with this client.* Nothing from earlier meetings to bring up, so listen for exact requirements, deadlines and who gets what.'
-      : 'No earlier recorded meetings like this one.'));
+      ? '*No earlier recording of this meeting.* Nothing from last time to bring up, so listen for exact requirements, deadlines and who gets what.'
+      : '*No earlier recording of this meeting*, so there\'s nothing from last time to bring up.'));
   } else {
-    blocks.push(section(`*Based on:* ${related.map(m => `${esc(m.title)} (${esc(shortDate(m.date))})`).join(', ')}`));
+    blocks.push(section(`*Earlier sessions:* ${related.map(m => esc(shortDate(m.date))).join(', ')}`));
     if (ai && ai.lastTime.length) blocks.push(section(`*Last time*\n${ai.lastTime.map(l => `•  ${esc(l)}`).join('\n')}`));
   }
   if (mine.length) {

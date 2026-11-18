@@ -43,11 +43,12 @@ async function aiPrepNotes(event, related, mine, waiting, readerName) {
         role: 'user',
         content: `You're preparing ${readerName || 'a Zawadie employee'} for the meeting "${event.title}", which starts soon.
 They are reading this: write TO them, using "you" for them. Never write their name${readerName ? ` (${readerName})` : ''} in any bullet.
-From the earlier meetings below, write:
+The meetings below are earlier sessions of this same meeting. From them, write:
 - last_time: up to 4 short bullets on what was agreed or decided last time that matters for this meeting.
 - questions: up to 4 short questions for them to ask the OTHER people in the meeting: things left open,
   what the others promised, and anything still unclear. Not questions about their own tasks.
-Use only what's below. Plain text, no Markdown.
+Stay on this meeting's own topics: leave out anything from those sessions that belongs to a different
+project or meeting. Use only what's below. Plain text, no Markdown.
 Return JSON: { "last_time": ["..."], "questions": ["..."] }
 
 STILL UNCLEAR IN THEIR OWN WORK:
