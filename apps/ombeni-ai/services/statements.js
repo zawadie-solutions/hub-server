@@ -60,8 +60,14 @@ Rules:
   must_have. Put a short question that would clear it up into unclear.
 - due: an exact date in YYYY-MM-DD if one was given or can be worked out from words like "by Friday"
   (the meeting was on ${weekday} ${meeting.date}). Otherwise null. Put the words actually used in due_said.
-- outcome: one plain sentence, addressed to the person ("You've succeeded when..."), saying what the
-  finished work achieves.
+- outcome: the answer to "What does success look like?": ONE short sentence (at most 25 words) that
+  describes the finished work itself when it's a success, naming the concrete qualities that make it
+  good, the way a lead would define it. Start with "It" or the deliverable's name. For example, for
+  building a voice AI agent: "It completes real tasks end-to-end with accurate tool calls, grounded
+  answers, and minimal repeat contacts." Describe the result and what makes it good (who it serves,
+  how well it works, what it gets right), not the steps, the schedule or the act of doing the work.
+  Only qualities said or clearly implied in this meeting. Never "You've succeeded when...", no
+  quotation marks.
 - Only use what was said in this meeting. Leave something out rather than guess.
 - Write in plain text, no Markdown.
 
@@ -72,7 +78,7 @@ Return strictly valid JSON:
     "assignee_name": "the name used in the meeting",
     "assignee_email": "from the list, or null",
     "assigned_by": "who gave the instruction, or 'self' if they volunteered",
-    "outcome": "You've succeeded when ...",
+    "outcome": "It ...",
     "must_haves": [{ "text": "...", "quote": "exact words", "speaker": "...", "time": "m:ss" }],
     "avoid": [{ "text": "...", "quote": "exact words", "speaker": "...", "time": "m:ss" }],
     "due": "YYYY-MM-DD or null",
@@ -177,7 +183,8 @@ function normalizeStatements(raw, allowedEmails, meeting = {}) {
       ownerName: str(a.assignee_name, 120) || null,
       assignedBy: str(a.assigned_by, 120) || null,
       statement: {
-        outcome: str(a.outcome),
+        // Shown in quotes, so any the model added are taken off.
+        outcome: str(a.outcome).replace(/^["'“”‘’]+|["'“”‘’]+$/g, '').trim(),
         mustHaves: list(a.must_haves, p => checkQuote(cleanPoint(p))),
         avoid: list(a.avoid, p => checkQuote(cleanPoint(p))),
         due: isoDate(a.due) || resolveDue(dueSaid, meeting.date),
@@ -199,10 +206,9 @@ function normalizeStatements(raw, allowedEmails, meeting = {}) {
 
 const slackEscape = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-function pointLine(p) {
-  const source = p.quote ? `\n      _"${slackEscape(p.quote)}"${p.speaker ? ` (${slackEscape(p.speaker)}${p.time ? `, ${slackEscape(p.time)}` : ''})` : ''}_` : '';
-  return `•  ${slackEscape(p.text)}${source}`;
-}
+// The question every success statement answers, wherever it's shown.
+const SUCCESS_HEADING = 'What does success look like?';
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 function formatDue(statement) {
   if (statement.due) {
@@ -218,15 +224,20 @@ function formatDue(statement) {
  * thread are answered; otherwise there's only a link to My Work.
  */
 function slackMessage(assignment, link, { interactive = false } = {}) {
+  // Short on purpose: the task, what success looks like in one quoted
+  // sentence, and when and to whom. The full requirements, with the exact
+  // words from the meeting, are one tap away in Ombeni.
   const s = assignment.statement;
   const due = formatDue(s);
   const lines = [];
-  if (s.outcome) lines.push(`*Success looks like*\n${slackEscape(s.outcome)}`);
-  if (s.mustHaves.length) lines.push(`*Must have*\n${s.mustHaves.map(pointLine).join('\n')}`);
-  if (s.avoid.length) lines.push(`*Avoid*\n${s.avoid.map(pointLine).join('\n')}`);
+  if (s.outcome) lines.push(`*${SUCCESS_HEADING}*\n>_"${slackEscape(s.outcome)}"_`);
   const facts = [due ? `*Due:* ${slackEscape(due)}` : null, s.deliverTo ? `*Deliver to:* ${slackEscape(s.deliverTo)}` : null].filter(Boolean);
   if (facts.length) lines.push(facts.join('    '));
-  if (s.unclear.length) lines.push(`*Still unclear. Ask before you start*\n${s.unclear.map(u => `•  ${slackEscape(u)}`).join('\n')}`);
+  const details = [
+    s.mustHaves.length ? plural(s.mustHaves.length, 'must-have') : null,
+    s.avoid.length ? plural(s.avoid.length, 'thing', 'things') + ' to avoid' : null,
+    s.unclear.length ? plural(s.unclear.length, 'question') + ' to ask before you start' : null
+  ].filter(Boolean);
 
   const heading = `New assignment from ${assignment.meetingTitle}${assignment.meetingDate ? ` (${assignment.meetingDate})` : ''}`;
   const blocks = [
@@ -234,6 +245,7 @@ function slackMessage(assignment, link, { interactive = false } = {}) {
     { type: 'context', elements: [{ type: 'mrkdwn', text: slackEscape(heading) }] },
     // Slack caps a section's text at 3000 characters.
     ...lines.map(text => ({ type: 'section', text: { type: 'mrkdwn', text: text.slice(0, 2900) } })),
+    ...(details.length ? [{ type: 'context', elements: [{ type: 'mrkdwn', text: `In Ombeni: ${details.join(' · ')}, with the exact words from the meeting.` }] }] : []),
     { type: 'divider' },
     ...(interactive ? [
       {
@@ -272,7 +284,7 @@ function mondayUpdateText(assignment) {
   const s = assignment.statement;
   const quote = (p) => (p.quote ? ` ("${p.quote}"${p.speaker ? ` (${p.speaker}${p.time ? `, ${p.time}` : ''})` : ''})` : '');
   const parts = [`Success statement from ${assignment.meetingTitle} (${assignment.meetingDate || ''})`];
-  if (s.outcome) parts.push(s.outcome);
+  if (s.outcome) parts.push(`${SUCCESS_HEADING}\n"${s.outcome}"`);
   if (s.mustHaves.length) parts.push(`Must have:\n${s.mustHaves.map(p => `- ${p.text}${quote(p)}`).join('\n')}`);
   if (s.avoid.length) parts.push(`Avoid:\n${s.avoid.map(p => `- ${p.text}${quote(p)}`).join('\n')}`);
   const due = formatDue(s);

@@ -144,7 +144,7 @@ const sample = {
   meetingDate: '2026-11-04',
   assignedBy: 'Wendy',
   statement: {
-    outcome: "You've succeeded when the proposal is approved.",
+    outcome: 'It covers all 3 <routes> with clear pricing & gets approved by David.',
     mustHaves: [{ text: 'Covers 3 routes', quote: 'those three <routes>', speaker: 'Wendy', time: '3:10' }],
     avoid: [{ text: 'No warehousing', quote: '', speaker: '', time: '' }],
     due: '2026-11-18',
@@ -154,20 +154,33 @@ const sample = {
   }
 };
 
-test('the Slack message escapes text and links to the assignment', () => {
+test('the Slack message is short: the task, what success looks like in quotes, when and to whom', () => {
   const { text, blocks } = slackMessage(sample, 'https://ai.zawadie.com/ombeni-ai/#work/abc-123');
   assert.match(text, /Review <proposal>/); // plain fallback text isn't mrkdwn
+  assert.equal(blocks[0].text.text, 'Review <proposal> & pricing', 'the task is the header');
+  const sections = blocks.filter(b => b.type === 'section').map(b => b.text.text);
+  assert.equal(sections[0], '*What does success look like?*\n>_"It covers all 3 &lt;routes&gt; with clear pricing &amp; gets approved by David."_');
+  assert.equal(sections[1], '*Due:* Wednesday, November 18    *Deliver to:* David');
+  assert.equal(sections.length, 2, 'no long lists in the message');
   const all = JSON.stringify(blocks);
-  assert.match(all, /those three &lt;routes&gt;/);
-  assert.doesNotMatch(all, /<routes>/);
-  assert.match(all, /Wednesday, November 18/);
+  assert.doesNotMatch(all, /Must have|those three|Is insurance included/, 'the details stay in Ombeni');
+  assert.match(all, /In Ombeni: 1 must-have · 1 thing to avoid · 1 question to ask before you start, with the exact words from the meeting\./);
   const button = blocks.find(b => b.type === 'actions').elements[0];
   assert.equal(button.url, 'https://ai.zawadie.com/ombeni-ai/#work/abc-123');
-  for (const b of blocks.filter(b => b.type === 'section')) assert.ok(b.text.text.length <= 3000);
+});
+
+test('Ombeni is asked for success in one short sentence about the finished work, and quotes are tidied', () => {
+  const prompt = buildPrompt({ title: 'AI huddle', date: '2026-11-16', externalDomains: [], participants: [], transcriptEntries: [] }, []);
+  assert.match(prompt, /answer to "What does success look like\?": ONE short sentence \(at most 25 words\)/);
+  assert.match(prompt, /"It completes real tasks end-to-end with accurate tool calls, grounded\s+answers, and minimal repeat contacts\."/);
+  assert.match(prompt, /Never "You've succeeded when\.\.\."/);
+  const { assignments } = normalizeStatements({ assignments: [{ title: 'Voice agent', assignee_email: 'kit@zawadie.com', outcome: '"It answers callers accurately."' }] }, ['kit@zawadie.com']);
+  assert.equal(assignments[0].statement.outcome, 'It answers callers accurately.');
 });
 
 test('the Monday update holds the whole statement', () => {
   const text = mondayUpdateText(sample);
+  assert.match(text, /^Success statement from Kenect sync \(2026-11-04\)\n\nWhat does success look like\?\n"It covers all 3 <routes> with clear pricing & gets approved by David\."/);
   assert.match(text, /Must have:\n- Covers 3 routes \("those three <routes>" \(Wendy, 3:10\)\)/);
   assert.match(text, /Avoid:\n- No warehousing/);
   assert.match(text, /Deliver to: David/);
