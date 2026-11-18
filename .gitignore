@@ -6,3 +6,15 @@ apps/google-review-monitor/config/locations.json
 # Face Match: downloaded model files and request logs stay local
 apps/face-match/models/
 apps/face-match/logs/
+# Lead Generation: the old Python app stays local only (the hub runs the Node
+# port in apps/company-research/src). Its env file once held a real API key.
+apps/company-research/env
+apps/company-research/backend/
+apps/company-research/data/
+apps/company-research/.gitignore
+apps/company-research/.env.example
+apps/company-research/pytest.ini
+apps/company-research/requirements.txt
+apps/company-research/start.bat
+apps/company-research/scripts/*.py
+apps/company-research/tests/*.py
