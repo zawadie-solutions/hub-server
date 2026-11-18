@@ -1326,14 +1326,34 @@ async function refreshClients() {
   }
 }
 
-function renderClientList({ data }) {
-  document.getElementById('clientsList').innerHTML = data.length
+// Undo after a delete: shown for a few seconds above the list.
+const CLIENT_UNDO_MS = 10000;
+let clientUndo = null; // { key, timer }
+
+function renderClientList({ data, deleted = [] }) {
+  const undo = clientUndo ? `
+    <div class="client-undo" role="status">
+      <span>Deleted <b>${escapeHtml(clientUndo.key)}</b>.</span>
+      <button class="btn btn-ghost btn-sm" data-client-restore="${escapeHtml(clientUndo.key)}">Undo</button>
+    </div>` : '';
+  const list = data.length
     ? data.map(c => `
         <div class="knowledge-section-item ${c.key === state.currentClient ? 'active' : ''}" data-client="${escapeHtml(c.key)}">
           <span class="kb-doc-title">${escapeHtml(c.key)}<span class="work-note" style="display:block;margin:0;">${c.meetings} meeting(s) · last ${escapeHtml(c.lastDate)}</span></span>
           <button class="kb-doc-delete" data-client-delete="${escapeHtml(c.key)}" title="Delete client" aria-label="Delete ${escapeHtml(c.key)}">✕</button>
         </div>`).join('')
     : '<div class="empty-state">No client meetings yet. Meetings with people from outside zawadie.com show up here.</div>';
+  // A quiet way back for a client deleted by mistake, folded away under the list.
+  const mistake = deleted.length ? `
+    <details class="client-mistake">
+      <summary>Deleted by mistake?</summary>
+      ${deleted.map(c => `
+        <div class="client-mistake-item">
+          <span class="kb-doc-title">${escapeHtml(c.key)}</span>
+          <button class="btn btn-ghost btn-sm" data-client-restore="${escapeHtml(c.key)}">Bring back</button>
+        </div>`).join('')}
+    </details>` : '';
+  document.getElementById('clientsList').innerHTML = undo + list + mistake;
 }
 
 document.getElementById('clientsList').addEventListener('click', async (e) => {
@@ -1341,10 +1361,13 @@ document.getElementById('clientsList').addEventListener('click', async (e) => {
   if (del) {
     e.stopPropagation();
     const key = del.dataset.clientDelete;
-    if (!confirm(`Delete ${key} from your clients?\n\nThis can't be undone. Their past meeting recordings stay in Meetings. If you have a new meeting with them, they'll show up here again.`)) return;
+    if (!confirm(`Delete ${key} from your clients?\n\nTheir past meeting recordings stay in Meetings. If you have a new meeting with them, they'll show up here again.`)) return;
     del.disabled = true;
     try {
-      renderClientList(await api(`/clients/${encodeURIComponent(key)}`, { method: 'DELETE' }));
+      const result = await api(`/clients/${encodeURIComponent(key)}`, { method: 'DELETE' });
+      if (clientUndo) clearTimeout(clientUndo.timer);
+      clientUndo = { key, timer: setTimeout(() => { clientUndo = null; document.querySelector('.client-undo')?.remove(); }, CLIENT_UNDO_MS) };
+      renderClientList(result);
       if (state.currentClient === key) {
         state.currentClient = null;
         document.getElementById('clientDetail').innerHTML = '<div class="empty-state">Pick a client to see what they\'ve asked for, across the meetings you attended.</div>';
@@ -1352,6 +1375,20 @@ document.getElementById('clientsList').addEventListener('click', async (e) => {
     } catch (err) {
       del.disabled = false;
       alert(`Couldn't delete ${key}: ${err.message}`);
+    }
+    return;
+  }
+  const restore = e.target.closest('[data-client-restore]');
+  if (restore) {
+    const key = restore.dataset.clientRestore;
+    restore.disabled = true;
+    try {
+      const result = await api(`/clients/${encodeURIComponent(key)}/restore`, { method: 'POST' });
+      if (clientUndo) { clearTimeout(clientUndo.timer); clientUndo = null; }
+      renderClientList(result);
+    } catch (err) {
+      restore.disabled = false;
+      alert(`Couldn't bring back ${key}: ${err.message}`);
     }
     return;
   }

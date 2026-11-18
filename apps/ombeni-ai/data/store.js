@@ -38,7 +38,17 @@ function onMeetingsRefreshed(listener) {
 
 async function refreshMeetings() {
   if (!notetakerService.isConfigured()) return meetings;
-  meetings = await notetakerService.listMeetings();
+  const { meetings: fresh, failedAccounts } = await notetakerService.listMeetingsReport();
+  if (failedAccounts && usingNotetaker) {
+    // A Monday account didn't answer (e.g. timed out): keep the recordings we
+    // already had instead of dropping them, or its meetings, clients and prep
+    // notes would vanish until the next refresh. Fresh copies win.
+    const ids = new Set(fresh.map(m => m.id));
+    meetings = [...fresh, ...meetings.filter(m => !ids.has(m.id))]
+      .sort((a, b) => String(b.startTime || b.date).localeCompare(String(a.startTime || a.date)));
+  } else {
+    meetings = fresh;
+  }
   usingNotetaker = true;
   lastRefreshedAt = Date.now();
 

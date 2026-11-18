@@ -260,6 +260,13 @@ button, input { font-family: inherit; font-size: inherit; }
 .knowledge-section-item .kb-doc-delete { background: none; border: none; color: var(--ombeni-muted); cursor: pointer; font-size: 14px; padding: 2px 4px; line-height: 1; flex-shrink: 0; }
 .knowledge-section-item .kb-doc-delete:hover { color: #991B1B; }
 .knowledge-section-item .kb-doc-delete:focus-visible { outline: 2px solid var(--ombeni-magenta); outline-offset: 1px; border-radius: 4px; }
+/* Clients page: Undo right after a delete, and a quiet way back for a client deleted by mistake */
+.client-undo { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px 10px; border-radius: 8px; background: #FDECF1; font-size: 13px; color: var(--ombeni-text); }
+.client-mistake { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--ombeni-border); font-size: 13px; }
+.client-mistake summary { cursor: pointer; color: var(--ombeni-muted); }
+.client-mistake summary:hover { color: var(--ombeni-text); }
+.client-mistake-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; }
+.client-mistake-item .kb-doc-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .knowledge-reader { min-height: 300px; font-size: 14px; line-height: 1.7; }
 .knowledge-reader h3 { font-size: 17px; margin-bottom: 4px; }
 .knowledge-reader-body { white-space: pre-wrap; }

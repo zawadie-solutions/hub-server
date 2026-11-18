@@ -128,25 +128,37 @@ const MEETINGS_QUERY = `query ($limit: Int, $access: MeetingAccessFilter) {
  * under the Notetaker account that owns or was shared into it, so a single
  * key can miss meetings another teammate's key can see.
  */
-async function listMeetings({ limit = 50, access = 'ALL' } = {}) {
+async function listMeetings(options) {
+  return (await listMeetingsReport(options)).meetings;
+}
+
+/**
+ * Like listMeetings, plus how many Monday accounts didn't answer (timed out or
+ * failed): { meetings, failedAccounts }. With failedAccounts > 0 the list is
+ * missing that account's recordings, so callers shouldn't treat it as complete.
+ */
+async function listMeetingsReport({ limit = 50, access = 'ALL' } = {}) {
   const keys = env.MONDAY_API_KEYS.length ? env.MONDAY_API_KEYS : [env.MONDAY_API_KEY].filter(Boolean);
+  let failedAccounts = 0;
 
   const resultsPerKey = await Promise.all(keys.map(async (apiKey) => {
     try {
       const data = await mondayRequest(MEETINGS_QUERY, { limit, access }, apiKey);
       return data.notetaker.meetings.meetings.map(normalizeMeeting);
     } catch (err) {
+      failedAccounts += 1;
       console.error('⚠️ Notetaker fetch failed for one MONDAY_API_KEY:', err.message);
       return [];
     }
   }));
 
   const seen = new Set();
-  return resultsPerKey.flat().filter(m => {
+  const meetings = resultsPerKey.flat().filter(m => {
     if (seen.has(m.id)) return false;
     seen.add(m.id);
     return true;
   });
+  return { meetings, failedAccounts };
 }
 
-module.exports = { isConfigured, listMeetings };
+module.exports = { isConfigured, listMeetings, listMeetingsReport };
