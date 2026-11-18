@@ -103,8 +103,45 @@ test('related meetings: same client, same recurring meeting, or mostly the same 
 
 const work = (o) => ({ id: 'w', title: 'Draft proposal', meetingTitle: 'Kenect sync', status: 'confirmed', statement: { due: null, unclear: [] }, ...o });
 
-test('no morning message when there is nothing to say', () => {
-  assert.equal(plan.morningMessage({ name: 'Kit Alimasi', email: KIT, timeZone: 'UTC', now: at('2026-11-17T08:00:00Z'), events: [], work: [work({ status: 'done' })], link: 'x' }), null);
+const idea = (n) => ({ title: `Idea ${n}`, why: `Because ${n}.` });
+const morning = (o) => plan.morningMessage({ name: 'Kit Alimasi', email: KIT, timeZone: 'UTC', now: at('2026-11-17T08:00:00Z'), events: [], work: [], link: 'x', ...o });
+
+test('with no work assigned, the morning message says so and suggests four ideas', () => {
+  const work_ = [work({ status: 'done' })];
+  assert.equal(plan.ideasWanted(work_), 4, 'done work does not count');
+  const all = JSON.stringify(morning({ work: work_, ideas: [1, 2, 3, 4, 5].map(idea) }).blocks);
+  assert.match(all, /\*Your work\*\\n•  No work is assigned to you right now\./);
+  assert.match(all, /No meetings on your calendar today/);
+  assert.match(all, /Here are 4 ideas to focus on today:/);
+  assert.match(all, /•  \*Idea 1\* – Because 1\./);
+  assert.match(all, /Idea 4/);
+  assert.doesNotMatch(all, /Idea 5/, 'never more than asked for');
+});
+
+test('with no work and no ideas (AI unavailable), it still says nothing is assigned', () => {
+  const msg = morning({});
+  const all = JSON.stringify(msg.blocks);
+  assert.match(all, /No work is assigned to you right now/);
+  assert.doesNotMatch(all, /Ideas to add value/);
+  assert.match(msg.text, /no meetings, no work assigned/);
+});
+
+test('with fewer than four tasks, every task is listed and ideas make up the difference', () => {
+  const work_ = [work({ title: 'Quiet task' }), work({ id: 'w2', title: 'Later task', statement: { due: '2026-11-30' } })];
+  assert.equal(plan.ideasWanted(work_), 2);
+  const all = JSON.stringify(morning({ work: work_, ideas: [1, 2].map(idea) }).blocks);
+  assert.match(all, /Your work \(2 tasks\)/);
+  assert.match(all, /Quiet task  _\(from Kenect sync\)_/, 'open work with no due date is listed too');
+  assert.match(all, /Later task  due Mon, Nov 30/);
+  assert.match(all, /You have 2 tasks assigned, so here are 2 more ideas worth your time today:/);
+});
+
+test('with four or more tasks, no ideas are suggested', () => {
+  const work_ = [1, 2, 3, 4].map(n => work({ id: `w${n}`, title: `Task ${n}` }));
+  assert.equal(plan.ideasWanted(work_), 0);
+  const all = JSON.stringify(morning({ work: work_, ideas: [idea(1)] }).blocks);
+  assert.match(all, /Your work \(4 tasks\)/);
+  assert.doesNotMatch(all, /Ideas to add value|Idea 1/);
 });
 
 test('the morning message lists today\'s meetings and work that is overdue, due or new', () => {

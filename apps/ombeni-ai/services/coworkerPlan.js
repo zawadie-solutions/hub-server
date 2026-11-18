@@ -97,45 +97,81 @@ const clientLabel = (attendees) => {
   return domains.length ? `  _(client: ${esc(domains.join(', '))})_` : '';
 };
 
+// A full day is this many things to focus on. With fewer open tasks than
+// this, the morning message suggests ideas to make up the difference.
+const FOCUS_ITEMS = 4;
+
+const openWork = (work) => (work || []).filter(a => a.status !== 'done');
+
+/** How many ideas the morning message should suggest for this much open work. */
+function ideasWanted(work) {
+  return Math.max(0, FOCUS_ITEMS - openWork(work).length);
+}
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
 /**
- * The morning message, or null when there's nothing to say (no meetings and
- * no open work): Ombeni doesn't message people just to say hello.
+ * The morning message. It always lists every open task (most urgent first),
+ * says plainly when nothing is assigned, and, with fewer than FOCUS_ITEMS
+ * tasks, adds the suggested ideas. ideas: [{ title, why }], written by the AI
+ * in coworker.js; empty when the AI isn't available.
  */
-function morningMessage({ name, email, timeZone, now, events, work, link }) {
+function morningMessage({ name, email, timeZone, now, events, work, ideas = [], link }) {
   const today = localParts(now, timeZone).date;
   const todays = events
     .filter(e => !e.declined && (e.isAllDay ? e.start.slice(0, 10) === today : localParts(new Date(e.start), timeZone).date === today))
     .sort((a, b) => String(a.start).localeCompare(String(b.start)));
 
-  const open = work.filter(a => a.status !== 'done');
+  const open = openWork(work);
   const due = (a) => a.statement && a.statement.due;
-  const overdue = open.filter(a => due(a) && due(a) < today);
+  const overdue = open.filter(a => due(a) && due(a) < today).sort((a, b) => due(a).localeCompare(due(b)));
   const dueToday = open.filter(a => due(a) === today);
-  const dueSoon = open.filter(a => due(a) && due(a) > today && due(a) <= addDays(today, 3));
-  const fresh = open.filter(a => a.status === 'new' && !overdue.includes(a) && !dueToday.includes(a) && !dueSoon.includes(a));
+  const dueSoon = open.filter(a => due(a) && due(a) > today && due(a) <= addDays(today, 3)).sort((a, b) => due(a).localeCompare(due(b)));
+  const listed = new Set([...overdue, ...dueToday, ...dueSoon]);
+  const fresh = open.filter(a => a.status === 'new' && !listed.has(a));
+  fresh.forEach(a => listed.add(a));
+  const rest = open.filter(a => !listed.has(a)).sort((a, b) => String(due(a) || '9999').localeCompare(String(due(b) || '9999')));
   const toFix = open.filter(a => (a.checks || [])[0] && !a.checks[0].result.ready);
 
-  if (!todays.length && !overdue.length && !dueToday.length && !dueSoon.length && !fresh.length && !toFix.length) return null;
-
   const weekday = new Date(`${today}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-  const item = (a, extra = '') => `•  ${esc(a.title)}${extra}  _(from ${esc(a.meetingTitle)})_`;
+  const item = (a, extra = '') => `•  ${esc(a.title)}${extra}${a.meetingTitle ? `  _(from ${esc(a.meetingTitle)})_` : ''}`;
   const blocks = [section(`*Good morning, ${esc(firstName(name, email))}.* Here's your ${esc(weekday)}.`)];
 
-  if (todays.length) {
-    blocks.push(section(`*Meetings today*\n${todays.map(e => `•  ${e.isAllDay ? 'All day' : esc(clockTime(e.start, timeZone))}  ${esc(e.title)}${clientLabel(e.attendees)}`).join('\n')}`));
+  blocks.push(section(todays.length
+    ? `*Meetings today*\n${todays.map(e => `•  ${e.isAllDay ? 'All day' : esc(clockTime(e.start, timeZone))}  ${esc(e.title)}${clientLabel(e.attendees)}`).join('\n')}`
+    : '*Meetings today*\n•  No meetings on your calendar today.'));
+
+  if (open.length) {
+    const workLines = [
+      ...overdue.map(a => item(a, `  *overdue since ${esc(shortDate(due(a)))}*`)),
+      ...dueToday.map(a => item(a, '  *due today*')),
+      ...dueSoon.map(a => item(a, `  due ${esc(shortDate(due(a)))}`)),
+      ...fresh.map(a => item(a, '  new, not read yet')),
+      ...rest.map(a => item(a, due(a) ? `  due ${esc(shortDate(due(a)))}` : ''))
+    ];
+    blocks.push(section(`*Your work (${plural(open.length, 'task', 'tasks')})*\n${workLines.join('\n')}`));
+  } else {
+    blocks.push(section('*Your work*\n•  No work is assigned to you right now.'));
   }
-  const workLines = [
-    ...overdue.map(a => item(a, `  *overdue since ${esc(shortDate(due(a)))}*`)),
-    ...dueToday.map(a => item(a, '  *due today*')),
-    ...dueSoon.map(a => item(a, `  due ${esc(shortDate(due(a)))}`)),
-    ...fresh.map(a => item(a, '  new, not read yet'))
-  ];
-  if (workLines.length) blocks.push(section(`*Your work*\n${workLines.join('\n')}`));
   if (toFix.length) blocks.push(section(`*Last check found things to fix*\n${toFix.map(a => item(a)).join('\n')}`));
+
+  const shown = ideas.slice(0, ideasWanted(work));
+  if (shown.length) {
+    const lead = open.length
+      ? `You have ${plural(open.length, 'task', 'tasks')} assigned, so here ${shown.length === 1 ? 'is one more idea' : `are ${shown.length} more ideas`} worth your time today:`
+      : `Here ${shown.length === 1 ? 'is one idea' : `are ${shown.length} ideas`} to focus on today:`;
+    const lines = shown.map(i => `•  *${esc(i.title)}*${i.why ? ` – ${esc(i.why)}` : ''}`);
+    blocks.push(section(`*Ideas to add value*\n${lead}\n${lines.join('\n')}`));
+  }
   blocks.push({ type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Open My Work' }, url: link, style: 'primary' }] });
 
-  const summary = [todays.length && `${todays.length} meeting(s)`, (overdue.length + dueToday.length) && `${overdue.length + dueToday.length} due`].filter(Boolean).join(', ');
-  return { text: `Good morning. Your day: ${summary || 'open work in Ombeni'}.`, blocks };
+  const summary = [
+    todays.length ? plural(todays.length, 'meeting', 'meetings') : 'no meetings',
+    open.length ? plural(open.length, 'task', 'tasks') : 'no work assigned',
+    (overdue.length + dueToday.length) && `${overdue.length + dueToday.length} due`,
+    shown.length && plural(shown.length, 'idea', 'ideas')
+  ].filter(Boolean).join(', ');
+  return { text: `Good morning. Your day: ${summary}.`, blocks };
 }
 
 /**
@@ -170,5 +206,5 @@ function prepMessage({ event, timeZone, related, mine, waiting, ai, link }) {
 
 module.exports = {
   localParts, shouldSendMorning, eventsNeedingPrep, prepKey, prunePrepped, relatedMeetings,
-  morningMessage, prepMessage, PREP_LEAD_MINUTES
+  morningMessage, prepMessage, ideasWanted, PREP_LEAD_MINUTES, FOCUS_ITEMS
 };

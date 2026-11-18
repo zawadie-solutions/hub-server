@@ -1478,7 +1478,7 @@ async function refreshCoworkerSettings() {
     ${google}
     ${monday}
     <div style="margin-top:14px;display:flex;flex-direction:column;gap:12px;">
-      ${toggle('morning', 'Morning message', 'Weekdays at 7:30 your time: today\'s meetings, and work that\'s due, new or needs fixing.')}
+      ${toggle('morning', 'Morning message', 'Weekdays at 7:30 your time: today\'s meetings, all your open work, and ideas for the day when you have fewer than four tasks.')}
       ${toggle('prep', 'Notes before meetings', 'About 30 minutes before each meeting: what happened last time, what\'s still open, and what to ask.')}
     </div>
     ${c.slackReady ? '' : '<div class="work-note">Slack isn\'t connected on the server yet, so nothing can be sent.</div>'}
