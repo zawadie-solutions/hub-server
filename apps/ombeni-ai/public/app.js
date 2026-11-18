@@ -1320,19 +1320,41 @@ document.getElementById('workContent').addEventListener('keydown', (e) => {
 async function refreshClients() {
   const list = document.getElementById('clientsList');
   try {
-    const { data } = await api('/clients');
-    list.innerHTML = data.length
-      ? data.map(c => `
-          <div class="knowledge-section-item ${c.key === state.currentClient ? 'active' : ''}" data-client="${escapeHtml(c.key)}">
-            <span class="kb-doc-title">${escapeHtml(c.key)}<span class="work-note" style="display:block;margin:0;">${c.meetings} meeting(s) · last ${escapeHtml(c.lastDate)}</span></span>
-          </div>`).join('')
-      : '<div class="empty-state">No client meetings yet. Meetings with people from outside zawadie.com show up here.</div>';
+    renderClientList(await api('/clients'));
   } catch (err) {
     list.innerHTML = `<div class="empty-state">Couldn't load clients: ${escapeHtml(err.message)}</div>`;
   }
 }
 
-document.getElementById('clientsList').addEventListener('click', (e) => {
+function renderClientList({ data }) {
+  document.getElementById('clientsList').innerHTML = data.length
+    ? data.map(c => `
+        <div class="knowledge-section-item ${c.key === state.currentClient ? 'active' : ''}" data-client="${escapeHtml(c.key)}">
+          <span class="kb-doc-title">${escapeHtml(c.key)}<span class="work-note" style="display:block;margin:0;">${c.meetings} meeting(s) · last ${escapeHtml(c.lastDate)}</span></span>
+          <button class="kb-doc-delete" data-client-delete="${escapeHtml(c.key)}" title="Delete client" aria-label="Delete ${escapeHtml(c.key)}">✕</button>
+        </div>`).join('')
+    : '<div class="empty-state">No client meetings yet. Meetings with people from outside zawadie.com show up here.</div>';
+}
+
+document.getElementById('clientsList').addEventListener('click', async (e) => {
+  const del = e.target.closest('[data-client-delete]');
+  if (del) {
+    e.stopPropagation();
+    const key = del.dataset.clientDelete;
+    if (!confirm(`Delete ${key} from your clients?\n\nThis can't be undone. Their past meeting recordings stay in Meetings. If you have a new meeting with them, they'll show up here again.`)) return;
+    del.disabled = true;
+    try {
+      renderClientList(await api(`/clients/${encodeURIComponent(key)}`, { method: 'DELETE' }));
+      if (state.currentClient === key) {
+        state.currentClient = null;
+        document.getElementById('clientDetail').innerHTML = '<div class="empty-state">Pick a client to see what they\'ve asked for, across the meetings you attended.</div>';
+      }
+    } catch (err) {
+      del.disabled = false;
+      alert(`Couldn't delete ${key}: ${err.message}`);
+    }
+    return;
+  }
   const item = e.target.closest('[data-client]');
   if (item) openClient(item.dataset.client);
 });

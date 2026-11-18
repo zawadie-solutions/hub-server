@@ -4,6 +4,7 @@
 const express = require('express');
 const store = require('../data/store');
 const workStore = require('../data/workStore');
+const people = require('../data/people');
 const clients = require('../services/clients');
 
 const router = express.Router();
@@ -15,8 +16,27 @@ router.use((req, res, next) => {
   next();
 });
 
-router.get('/', (req, res) => {
-  res.json({ success: true, data: clients.listClients(myMeetings(me(req))) });
+// The clients a person deleted: { [key]: 'YYYY-MM-DD' deleted on }.
+const deletedBy = async (email) => ((await people.get(email)) || {}).deletedClients || {};
+
+// The person's clients, without the ones they deleted.
+async function myClients(email) {
+  return clients.withoutDeleted(clients.listClients(myMeetings(email)), await deletedBy(email));
+}
+
+// A client's meetings that the person attended, or [] if they deleted that client.
+async function myClientMeetings(email, key) {
+  const meetings = clients.meetingsFor(key, myMeetings(email));
+  const lastDate = meetings.length ? String(meetings[0].date) : '';
+  return clients.isDeleted({ key, lastDate }, await deletedBy(email)) ? [] : meetings;
+}
+
+router.get('/', async (req, res) => {
+  try {
+    res.json({ success: true, data: await myClients(me(req)) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Summaries are kept for a day per person and set of meetings; a new meeting
@@ -25,10 +45,30 @@ const summaries = new Map();
 const SUMMARY_TTL_MS = 24 * 3600 * 1000;
 const summaryKey = (email, key, meetings) => `${email}|${key}|${meetings.map(m => m.id).join(',')}`;
 
+// Delete a client from your list (e.g. you no longer work with them). No undo.
+// Only your list changes: the meeting recordings stay in Meetings, and your
+// colleagues keep their own lists. A new meeting with them after today brings
+// them back as a client.
+router.delete('/:key', async (req, res) => {
+  try {
+    const email = me(req);
+    const key = String(req.params.key).toLowerCase();
+    if (!(await myClients(email)).some(c => c.key === key)) {
+      return res.status(404).json({ success: false, error: 'That client isn\'t in your list.' });
+    }
+    const deletedClients = { ...(await deletedBy(email)), [key]: new Date().toISOString().slice(0, 10) };
+    await people.update(email, { deletedClients });
+    for (const cacheKey of summaries.keys()) if (cacheKey.startsWith(`${email}|${key}|`)) summaries.delete(cacheKey);
+    res.json({ success: true, data: await myClients(email) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.get('/:key', async (req, res) => {
   try {
     const key = String(req.params.key).toLowerCase();
-    const meetings = clients.meetingsFor(key, myMeetings(me(req)));
+    const meetings = await myClientMeetings(me(req), key);
     if (!meetings.length) return res.status(404).json({ success: false, error: 'No meetings with that client that you attended.' });
     const ids = new Set(meetings.map(m => m.id));
     const [briefs, mine] = await Promise.all([
@@ -54,7 +94,7 @@ router.get('/:key', async (req, res) => {
 router.post('/:key/summary', async (req, res) => {
   try {
     const key = String(req.params.key).toLowerCase();
-    const meetings = clients.meetingsFor(key, myMeetings(me(req)));
+    const meetings = await myClientMeetings(me(req), key);
     if (!meetings.length) return res.status(404).json({ success: false, error: 'No meetings with that client that you attended.' });
     let result;
     try {

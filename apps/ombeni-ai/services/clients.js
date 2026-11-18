@@ -20,6 +20,18 @@ function listClients(meetings) {
   return [...byKey.values()].sort((a, b) => b.lastDate.localeCompare(a.lastDate));
 }
 
+/**
+ * Whether the person deleted this client (deletedClients: { [key]: 'YYYY-MM-DD'
+ * deleted on }). A meeting with them after that day makes them a client again.
+ */
+const isDeleted = (client, deletedClients) => {
+  const deletedOn = (deletedClients || {})[client.key];
+  return Boolean(deletedOn) && String(client.lastDate || '') <= deletedOn;
+};
+
+/** The person's client list without the clients they deleted. */
+const withoutDeleted = (list, deletedClients) => list.filter(c => !isDeleted(c, deletedClients));
+
 const meetingsFor = (key, meetings) => meetings
   .filter(m => clientKeys(m.participants).includes(key))
   .sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -81,4 +93,4 @@ async function clientSummary(key, meetings) {
   return normalizeSummary(JSON.parse(response.choices[0].message.content));
 }
 
-module.exports = { listClients, meetingsFor, summaryPrompt, normalizeSummary, clientSummary, MAX_MEETINGS };
+module.exports = { listClients, isDeleted, withoutDeleted, meetingsFor, summaryPrompt, normalizeSummary, clientSummary, MAX_MEETINGS };
