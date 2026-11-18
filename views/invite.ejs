@@ -32,7 +32,8 @@
             <span>Password</span>
             <span class="password-wrap">
               <input class="input" type="password" name="password" minlength="8" placeholder="At least 8 characters" autocomplete="new-password" required autofocus />
-              <button type="button" class="password-toggle" aria-label="Show password" aria-pressed="false" hidden>Show</button>
+              <%# One Show/Hide for both boxes, like the sign-in page: it shows or hides the password and its confirmation together. %>
+              <button type="button" class="password-toggle" aria-label="Show passwords" aria-pressed="false" hidden>Show</button>
             </span>
             <span class="password-hint" role="status" hidden>Caps Lock is on.</span>
           </label>
@@ -40,7 +41,6 @@
             <span>Confirm password</span>
             <span class="password-wrap">
               <input class="input" type="password" name="confirm" minlength="8" autocomplete="new-password" required />
-              <button type="button" class="password-toggle" aria-label="Show password" aria-pressed="false" hidden>Show</button>
             </span>
             <span class="password-hint" role="status" hidden>Caps Lock is on.</span>
           </label>

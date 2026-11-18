@@ -227,6 +227,8 @@ button, input { font-family: inherit; font-size: inherit; }
 .msg-bubble { max-width: 75%; padding: 12px 16px; border-radius: 12px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
 .msg.user .msg-bubble { background: var(--ombeni-magenta); color: #fff; border-bottom-right-radius: 3px; }
 .msg.bot .msg-bubble { background: #F1F5F9; color: var(--ombeni-text); border-bottom-left-radius: 3px; }
+.msg-bubble .reply-link { color: var(--ombeni-magenta); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.msg-bubble .reply-link:hover { color: var(--ombeni-magenta-dark); }
 .msg-sources { display: flex; flex-wrap: wrap; gap: 6px; margin: -6px 0 4px 30px; }
 
 .chat-input-area { display: flex; gap: 8px; margin-top: 14px; align-items: center; }

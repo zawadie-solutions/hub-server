@@ -179,7 +179,7 @@ async function handleDraftRequest(event) {
   try {
     const { reply: answer } = await openaiService.handleChat(
       [{ role: 'user', content: replies.cleanSlackText(event.text).slice(0, 4000) }],
-      { meetings, ...gmailService.draftOptions(tokens) }
+      { meetings, ...gmailService.draftOptions(tokens, email) }
     );
     return reply(replies.chatReply(answer));
   } catch (err) {

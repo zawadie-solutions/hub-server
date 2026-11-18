@@ -294,7 +294,9 @@ function appendMessage(sender, text, sources) {
 
   const bubble = document.createElement('div');
   bubble.className = 'msg-bubble';
-  bubble.textContent = text;
+  // Ombeni's links (e.g. its Gmail draft) are clickable; what people type stays plain text.
+  if (sender === 'bot') bubble.innerHTML = replyHtml(text);
+  else bubble.textContent = text;
   div.appendChild(bubble);
 
   chatThread.appendChild(div);
@@ -870,7 +872,7 @@ function renderMeetingChatThread(m) {
   ` + history.map(h => `
     <div class="msg ${h.role === 'user' ? 'user' : 'bot'}">
       ${h.role === 'user' ? '' : '<img class="chat-avatar" src="zawadie-logo.png" alt="Ombeni AI">'}
-      <div class="msg-bubble">${escapeHtml(h.content)}</div>
+      <div class="msg-bubble">${h.role === 'user' ? escapeHtml(h.content) : replyHtml(h.content)}</div>
     </div>
   `).join('');
 
@@ -1005,7 +1007,7 @@ function askPanel(a) {
     <div class="work-ask">
       <div class="chat-thread">
         <div class="msg bot"><div class="msg-bubble">Ask me anything about this assignment. I'll answer from what was said in the meeting, with quotes.</div></div>
-        ${thread.map(h => `<div class="msg ${h.role === 'user' ? 'user' : 'bot'}"><div class="msg-bubble">${escapeHtml(h.content)}</div></div>`).join('')}
+        ${thread.map(h => `<div class="msg ${h.role === 'user' ? 'user' : 'bot'}"><div class="msg-bubble">${h.role === 'user' ? escapeHtml(h.content) : replyHtml(h.content)}</div></div>`).join('')}
       </div>
       <div class="chat-input-area">
         <input type="text" data-ask-input="${a.id}" placeholder="e.g. What exactly did they say about the format?">

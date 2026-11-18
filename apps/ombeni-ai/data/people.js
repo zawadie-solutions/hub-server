@@ -118,4 +118,11 @@ async function forgetGoogle(email) {
   return update(email, { google: null });
 }
 
-module.exports = { init, get, update, list, saveGoogle, googleTokens, markGoogleBroken, forgetGoogle, canStoreTokens, encrypt, decrypt };
+// Google said the Gmail permission isn't there after all: Settings offers
+// Allow Gmail drafts again, and Ombeni stops offering to save drafts.
+async function forgetGmail(email) {
+  const person = await get(email);
+  if (person && person.google) await update(email, { google: { ...person.google, scopes: (person.google.scopes || []).filter(s => !/gmail/.test(s)) } });
+}
+
+module.exports = { init, get, update, list, saveGoogle, googleTokens, markGoogleBroken, forgetGoogle, forgetGmail, canStoreTokens, encrypt, decrypt };

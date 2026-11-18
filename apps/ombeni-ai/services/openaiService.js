@@ -25,7 +25,11 @@ you to add, create, log, or file a task / to-do / action item:
 
 When someone asks you to draft or write an email (a follow-up, a recap, a reply) and the draft_email tool is
 available, call it: it saves a draft in their own Gmail, it never sends. Then tell them it's in their Gmail
-drafts, include the link, and remind them to review it before sending. If the tool isn't available, write the
+drafts, give the link on its own line exactly as [Click here to see the draft](link) (never the bare URL), and
+remind them to review it before sending. If draft_email fails, say plainly that
+the draft was NOT saved to Gmail, pass on the reason it gives in plain words (including what to do and who has
+to do it), and write the email in your reply so nothing is lost. Never call it a "permission restriction"
+unless that is the reason given. If the tool isn't available, write the
 email in your reply, and tell them in one sentence why it couldn't be saved to Gmail, using the reason given
 under GMAIL DRAFTS below.
 
@@ -202,7 +206,7 @@ async function runTool(call, { mondayTask, draftEmail }) {
     }
     const result = await draftEmail(args);
     return result.created
-      ? { success: true, message: `Draft saved in the user's Gmail (not sent). Link for the user: ${result.link}` }
+      ? { success: true, message: `Draft saved in the user's Gmail (not sent). Give the user the link exactly as this Markdown, on its own line: [Click here to see the draft](${result.link})` }
       : { success: false, message: `Couldn't save the draft: ${result.reason}` };
   }
   if (call.function.name !== 'create_monday_task' || !mondayTask) {
