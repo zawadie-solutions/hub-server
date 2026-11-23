@@ -161,3 +161,12 @@ test('co-worker settings belong to the signed-in person', async () => {
   assert.notEqual((await people.get(KIT)).prefs.morning, false, 'Kit\'s setting untouched');
   assert.equal((await call(TYLER, 'GET', '/api/me/coworker')).body.data.google, null, 'Tyler never connected Google');
 });
+
+test('daily ideas: a different focus every day and for every person, and near-repeats are caught', () => {
+  const days = ['2026-11-19', '2026-11-20', '2026-11-23', '2026-11-24'];
+  const kit = days.map(d => coworker.focusFor(KIT, d).join('|'));
+  assert.equal(new Set(kit).size, days.length, 'Kit gets new themes each day');
+  assert.notEqual(coworker.focusFor(KIT, days[0]).join('|'), coworker.focusFor(TYLER, days[0]).join('|'));
+  assert.ok(coworker.sameIdea('Research Browser Extension Feasibility', 'Research browser extension feasibility today'));
+  assert.ok(!coworker.sameIdea('Document escalation review steps', 'Prepare business plan presentation'));
+});
