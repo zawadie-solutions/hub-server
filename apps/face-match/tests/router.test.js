@@ -205,6 +205,52 @@ describe('POST /match', () => {
   });
 });
 
+describe('any_face mode (galleries with group photos)', () => {
+  // png(3, 3) is a group photo of identities 3, 4 and 5; png(5) is a reference of identity 5.
+  it('without it, a group photo still asks for a face to be picked', async () => {
+    const { body } = await match(await png(5), [await png(3, 3)]);
+    expect(body.results[0].status).toBe('multiple_faces');
+    expect(body.any_face).toBeUndefined();
+    expect(body.results[0].faces.every((f) => f.score === undefined)).toBe(true);
+  });
+
+  it('uses the best face of a group photo, and reports every face\'s score', async () => {
+    const { body } = await match(await png(5), [await png(3, 3)], { any_face: 1 });
+    const r = body.results[0];
+    expect(body.any_face).toBe(true);
+    expect(body.status).toBe('ok');
+    expect([r.status, r.selected_face, r.verdict]).toEqual(['ok', 2, 'match']);
+    expect(r.faces.map((f) => f.score)).toEqual([0, 0, 1]);
+  });
+
+  it('reports no match when no face in the group resembles the reference', async () => {
+    const { body } = await match(await png(5), [await png(9, 3)], { any_face: 1 });
+    expect(body.results[0].verdict).toBe('no_match');
+    expect(body.results[0].faces.map((f) => f.score)).toEqual([0, 0, 0]);
+  });
+
+  it('still works for single-face photos, and mixes with plain photos in one batch', async () => {
+    const { body } = await match(await png(5), [await png(5), await png(3, 3), await png(5, 0)], { any_face: 'true' });
+    expect(body.results.map((r) => [r.status, r.verdict])).toEqual([['ok', 'match'], ['ok', 'match'], ['no_face', null]]);
+  });
+
+  it('lets an explicit candidate_faces pick override the search', async () => {
+    const { body } = await match(await png(5), [await png(3, 3)], { any_face: 1, candidate_faces: '0:0' });
+    expect([body.results[0].selected_face, body.results[0].verdict]).toEqual([0, 'no_match']);
+  });
+
+  it('still refuses a reference with several faces: it never guesses which one is meant', async () => {
+    const { body } = await match(await png(5, 2), [await png(5)], { any_face: 1 });
+    expect(body.reference.status).toBe('multiple_faces');
+    expect(body.results[0].verdict).toBeNull();
+  });
+
+  it('rejects a value that is not a yes/no', async () => {
+    expect((await match(await png(5), [await png(5)], { any_face: 'maybe' })).status).toBe(422);
+    expect((await match(await png(5), [await png(5)], { any_face: '0' })).body.any_face).toBeUndefined();
+  });
+});
+
 describe('page and assets', () => {
   it('serves the upload page, self-contained and with only relative URLs', async () => {
     const res = await fetch(`${base}/`);

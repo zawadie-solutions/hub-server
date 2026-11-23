@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Face Match</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header>
+    <h1>Face Match</h1>
+    <p class="sub">Does the gallery show the profile's person?</p>
+  </header>
+
+  <main>
+    <section class="step" aria-labelledby="step1">
+      <h2 id="step1"><span class="n">1</span>Profile photo</h2>
+      <p class="hint">Press the button, then click the profile photo on the page.</p>
+      <div class="row">
+        <button type="button" id="pick" class="btn">Pick the profile photo</button>
+      </div>
+      <div id="reference" class="reference" hidden>
+        <img id="ref-thumb" alt="The picked profile photo" referrerpolicy="no-referrer">
+        <span id="ref-name"></span>
+      </div>
+    </section>
+
+    <section class="step" aria-labelledby="step2">
+      <h2 id="step2"><span class="n">2</span>Gallery</h2>
+      <p class="hint">Compares the profile photo with the other photos on this page.</p>
+      <div class="row">
+        <button type="button" id="check" class="btn primary" disabled>Check the gallery</button>
+      </div>
+      <progress id="bar" max="1" value="0" hidden aria-label="Progress"></progress>
+    </section>
+
+    <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+
+    <section id="results" class="results" hidden aria-labelledby="results-title">
+      <h2 id="results-title">Result</h2>
+      <p id="summary" class="summary"></p>
+      <p class="hint">A result is a prompt to look, not proof. Photos of friends, family or pets are normal in a gallery.</p>
+      <ul id="rows" class="rows"></ul>
+      <button type="button" id="clear" class="btn">Clear</button>
+    </section>
+
+    <details id="settings" class="settings">
+      <summary>Hub address</summary>
+      <label for="hub">Zawadie hub address</label>
+      <input id="hub" type="url" placeholder="https://your-hub.example.com/face-match" autocomplete="off" spellcheck="false">
+      <div class="row"><button type="button" id="save-hub" class="btn">Save</button><span id="hub-msg" class="hint"></span></div>
+    </details>
+  </main>
+
+  <footer>
+    Photos are sent to <b id="hub-host">the Zawadie hub</b> to be compared. This extension saves no photos and no results.
+  </footer>
+
+  <script type="module" src="panel.js"></script>
+</body>
+</html>

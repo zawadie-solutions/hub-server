@@ -29,6 +29,16 @@ a status per image (`ok`, `no_face`, `multiple_faces`, `invalid_image`, `invalid
 engine never picks one of several faces itself. 422 means a malformed parameter, 503 means the models
 are still loading.
 
+**`any_face=1`** (for galleries with group photos): a candidate photo with several faces is no longer
+sent back as `multiple_faces`. Every face is scored against the reference and the best one is used;
+`selected_face` says which, and each entry in `faces` carries its own `score`. The reference must still
+be exactly one face (the engine never guesses which face the reference is), and an explicit
+`candidate_faces` pick still wins. Comparing more faces gives more chances of a wrong "possible", so a big
+group photo deserves a second look.
+
+`extension/` is a Chrome extension that uses this mode to check a profile's gallery against its profile
+photo for human moderators. See `extension/README.md`.
+
 ## Three outcomes
 
 Each scored candidate gets a `verdict`, from its cosine similarity score (0 to 1):
