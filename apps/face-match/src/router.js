@@ -11,7 +11,7 @@ const express = require("express");
 const multer = require("multer");
 
 const { decodeImage } = require("./imaging");
-const { selectFace, matchReference } = require("./matching");
+const { selectFace, matchReference, cosineScore } = require("./matching");
 const { validateThreshold } = require("./config");
 
 const STATIC_DIR = path.join(__dirname, "..", "static");
@@ -42,6 +42,14 @@ function parseOptionalInt(raw, name) {
   return Number(raw);
 }
 
+function parseBoolean(raw, name) {
+  if (raw === undefined || String(raw).trim() === "") return false;
+  const v = String(raw).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(v)) return true;
+  if (["0", "false", "no", "off"].includes(v)) return false;
+  throw new BadRequest(`${name} must be 1 or 0`);
+}
+
 const round = (v, digits) => Math.round(v * 10 ** digits) / 10 ** digits;
 
 function faceJson(face, index) {
@@ -49,6 +57,8 @@ function faceJson(face, index) {
     index,
     bbox: face.bbox.map((v) => round(v, 1)),
     det_score: round(face.detScore, 4),
+    // Only in any_face mode: how well this face matches the reference, so a reviewer can see which one it was.
+    ...(face.score !== undefined ? { score: round(face.score, 4) } : {}),
     ...(face.quality ? { quality: face.quality } : {}),
   };
 }
@@ -154,6 +164,10 @@ function createRouter({ manager, settings, requestLog = () => {} }) {
       }
       const referenceFace = parseOptionalInt(fields.reference_face, "reference_face");
       const picks = parseCandidateFaces(fields.candidate_faces, candidates.length);
+      // any_face: for a candidate photo with several faces, score every face against the reference and use the
+      // best one, instead of asking a person to pick. For galleries with group photos. The reference must still
+      // be exactly one face: we never guess which face the reference is.
+      const anyFace = parseBoolean(fields.any_face, "any_face");
 
       manager.start();
       const engine = manager.engine;
@@ -172,11 +186,31 @@ function createRouter({ manager, settings, requestLog = () => {} }) {
         return selectFace(upload.originalname || "", faces, faceIndex);
       }
 
+      // A candidate photo's best face against the reference. Faces with no explicit pick are all scored.
+      async function analyzeCandidate(upload, faceIndex, refEmbedding) {
+        const image = await decodeImage(upload.buffer);
+        const faces = image === null ? null : await engine.detect(image);
+        if (anyFace && faces && faces.length > 0 && faceIndex === null && refEmbedding) {
+          let best = 0;
+          faces.forEach((f, i) => {
+            f.score = cosineScore(refEmbedding, f.embedding);
+            if (f.score > faces[best].score) best = i;
+          });
+          return selectFace(upload.originalname || "", faces, best);
+        }
+        return selectFace(upload.originalname || "", faces, faceIndex);
+      }
+
       const ref = await analyze(refs[0], referenceFace);
       const analyzed = [];
-      for (let i = 0; i < candidates.length; i++) analyzed.push(await analyze(candidates[i], picks.get(i) ?? null));
+      for (let i = 0; i < candidates.length; i++) {
+        analyzed.push(await analyzeCandidate(candidates[i], picks.get(i) ?? null, ref.embedding));
+      }
 
-      const body = reportJson(matchReference(ref, analyzed, threshold, settings.possibleThreshold));
+      const body = {
+        ...reportJson(matchReference(ref, analyzed, threshold, settings.possibleThreshold)),
+        ...(anyFace ? { any_face: true } : {}),
+      };
       // Metadata only (FR5): no pixels and no embeddings ever reach the log.
       requestLog({
         request_id: crypto.randomUUID().replaceAll("-", ""),

@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Face Match: profile photo check (internal)",
+  "version": "0.1.0",
+  "description": "Internal moderation aid. Checks whether the photos in a profile's own gallery show the same person as its profile photo. Photos go only to the Zawadie hub; nothing is stored.",
+  "minimum_chrome_version": "116",
+  "action": { "default_title": "Face Match" },
+  "side_panel": { "default_path": "panel.html" },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["activeTab", "scripting", "storage", "sidePanel"],
+  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
