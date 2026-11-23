@@ -69,65 +69,126 @@ ${context}`
   }
 }
 
-const RECENT_DAYS = 14;
-const RECENT_MEETINGS = 6;
+// What Zawadie is for (from zawadie.com). Ideas come from this, not from
+// whatever happened to be discussed in recent meetings.
+const MISSION = `Zawadie Solutions runs managed AI operations. Its mission: technology should lift people, not replace them - every hour of AI operations it runs also creates paid, skill-building work for displaced professionals. A "Human Intelligence Layer" of skilled operators monitors, validates and improves AI outputs, because AI in production needs an ongoing operational function, accuracy and judgment need people, and operations work should create careers.`;
 
-// Ideas for the morning message when someone has fewer than four open tasks,
-// grounded in their own recent meetings, today's calendar and their work.
-// Never blocks the message: if the AI fails, it goes without ideas.
+// One or two of these is each person's theme for the day, so the ideas differ
+// from day to day. They are Zawadie's service areas and values.
+const FOCUS_AREAS = [
+  'Customer Operations: AI chat monitoring, ticket routing, QA, escalation review, knowledge-base updates',
+  'Sales Operations: CRM hygiene, lead enrichment, prospect research, outbound QA',
+  'Back Office Operations: document processing, HR support, finance workflows, vendor management',
+  'Process Automation: workflow automation, SOPs, exception handling, monitoring AI',
+  'AI Workforce Enablement: AI adoption, training, SOP development, governance, team enablement',
+  'Human Intelligence: improving how operators validate and correct AI outputs, accuracy and quality checks',
+  'Opportunity through technology: creating skill-building work and growth paths for the people on the team',
+  'Client success: understanding what a client needs from AI operations and showing the value delivered',
+  'Quality and accuracy: measuring AI accuracy, finding recurring errors, closing the loop',
+  'Knowledge sharing: documenting what works so the whole team can reuse it',
+  'Hiring and training operators: onboarding material, practice exercises, coaching',
+  'Business development: finding and framing new use cases for managed AI operations'
+];
+const HISTORY_DAYS = 45;
+const HISTORY_MAX = 80;
+
+const words = (t) => new Set(String(t).toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 3));
+/** True when two idea titles are close enough to count as the same idea. */
+function sameIdea(a, b) {
+  const x = words(a), y = words(b);
+  if (!x.size || !y.size) return false;
+  let shared = 0;
+  for (const w of x) if (y.has(w)) shared++;
+  return shared / Math.min(x.size, y.size) >= 0.6;
+}
+
+function hash(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+/** Two focus areas for this person on this day: different every day, different for every person. */
+function focusFor(email, today) {
+  const day = Math.floor(Date.parse(`${today}T12:00:00Z`) / 86400000);
+  const start = hash(String(email).toLowerCase()) % FOCUS_AREAS.length;
+  const first = (start + day * 2) % FOCUS_AREAS.length;
+  return [FOCUS_AREAS[first], FOCUS_AREAS[(first + 1) % FOCUS_AREAS.length]];
+}
+
+const recentHistory = (person, today) => {
+  const since = new Date(Date.parse(`${today}T12:00:00Z`) - HISTORY_DAYS * 86400000).toISOString().slice(0, 10);
+  return (Array.isArray(person.ideaHistory) ? person.ideaHistory : []).filter(h => h && h.title && String(h.date) >= since);
+};
+
+// Ideas for the morning message when someone has fewer than four open tasks.
+// Built from the company mission, a daily focus for this person, today's
+// calendar titles and their own open work. Meeting summaries are deliberately
+// not used: they pulled in topics from other clients' meetings. Titles already
+// suggested to this person are never repeated. Never blocks the message: if
+// the AI fails, it goes without ideas.
 async function aiIdeas(person, count, { events, open, today }) {
   if (!env.isOpenAIConfigured || count <= 0) return [];
-  const since = new Date(Date.parse(`${today}T12:00:00Z`) - RECENT_DAYS * 86400000).toISOString().slice(0, 10);
-  const recent = meetingsAttendedBy(person.email)
-    .filter(m => String(m.date || '') >= since)
-    .sort((a, b) => String(b.date).localeCompare(String(a.date)))
-    .slice(0, RECENT_MEETINGS);
-  const waiting = recent.length ? (await workStore.getBriefs(recent.map(m => m.id))).flatMap(b => b.waitingOnClient || []) : [];
-  const meetings = recent.map(m => {
-    const a = m.analysis || {};
-    return [
-      `MEETING: ${m.title} (${m.date})`,
-      a.summary ? `Summary: ${String(a.summary).slice(0, 800)}` : '',
-      (a.decisions || []).length ? `Decisions: ${a.decisions.slice(0, 6).join(' | ')}` : ''
-    ].filter(Boolean).join('\n');
-  }).join('\n\n');
-
-  try {
+  const history = recentHistory(person, today);
+  const focus = focusFor(person.email, today);
+  const ask = async (n, avoid) => {
     const response = await client().chat.completions.create({
       model: MODEL,
-      temperature: 0.5,
+      temperature: 0.9,
       response_format: { type: 'json_object' },
       messages: [{
         role: 'user',
-        content: `You are Ombeni, a co-worker at Zawadie Solutions. Suggest exactly ${count} idea(s) for ${person.name || 'this employee'} to work on today that would add real value to the company.
+        content: `You are Ombeni, a co-worker at Zawadie Solutions. Suggest exactly ${n} idea(s) for ${person.name || 'this employee'} to work on today that would add real value to the company and advance its mission.
 They are reading this: write TO them, using "you". Never write their name.
+
+ABOUT ZAWADIE:
+${MISSION}
+
+TODAY'S THEMES (draw the ideas from these, one idea per theme where possible):
+${focus.map(f => `- ${f}`).join('\n')}
+
 Each idea must:
 - be something one person can make real progress on in a day,
-- build on the meetings, clients and open work below where possible (follow up, unblock, improve a process, prepare, document, share what was learned),
+- be general to Zawadie's work: do NOT name or assume any specific client, project or meeting,
+- be different in subject and wording from every idea under ALREADY SUGGESTED and TO AVOID,
 - not repeat a task they already have.
-If there is little context, suggest sensible ideas for an employee of a services company (client follow-ups, process improvements, documentation, learning the team can reuse).
 Keep it professional and specific. Plain text, no Markdown, no emoji.
 Return JSON: { "ideas": [{ "title": "short action, at most 8 words", "why": "one sentence, at most 25 words, on the value to the company" }] }
 
-TODAY'S MEETINGS:
+TODAY'S MEETINGS (titles only):
 ${events.map(e => `- ${e.title}`).join('\n') || '(none)'}
 
 THEIR OPEN WORK:
 ${open.map(a => `- ${a.title}`).join('\n') || '(none)'}
 
-WAITING ON CLIENTS:
-${waiting.map(w => `- ${w.who ? `${w.who}: ` : ''}${w.what}`).join('\n') || '(none)'}
-
-THEIR RECENT MEETINGS:
-${meetings || '(none recorded)'}`
+ALREADY SUGGESTED TO THEM IN THE LAST ${HISTORY_DAYS} DAYS:
+${history.map(h => `- ${h.title}`).join('\n') || '(none)'}
+${avoid.length ? `\nTO AVOID (just rejected as repeats):\n${avoid.map(t => `- ${t}`).join('\n')}` : ''}`
       }]
     });
     const raw = JSON.parse(response.choices[0].message.content);
     const text = (v, max) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '');
     return (Array.isArray(raw.ideas) ? raw.ideas : [])
       .map(i => ({ title: text(i && i.title, 120), why: text(i && i.why, 300) }))
-      .filter(i => i.title)
-      .slice(0, count);
+      .filter(i => i.title);
+  };
+
+  try {
+    const taken = [...history.map(h => h.title), ...open.map(a => a.title)];
+    const picked = [];
+    const rejected = [];
+    for (let attempt = 0; attempt < 2 && picked.length < count; attempt++) {
+      for (const idea of await ask(count - picked.length + (attempt ? 1 : 0), rejected)) {
+        if (picked.length >= count) break;
+        if ([...taken, ...picked.map(p => p.title)].some(t => sameIdea(t, idea.title))) rejected.push(idea.title);
+        else picked.push(idea);
+      }
+    }
+    if (picked.length) {
+      const kept = [...history, ...picked.map(i => ({ date: today, title: i.title }))].slice(-HISTORY_MAX);
+      await people.update(person.email, { ideaHistory: kept });
+    }
+    return picked;
   } catch (err) {
     console.error('⚠️ Morning ideas AI failed, sending without them:', err.message);
     return [];
@@ -220,4 +281,4 @@ function start() {
   setInterval(() => tick().catch(err => console.error('⚠️ Co-worker tick failed:', err.message)), EVERY_MS);
 }
 
-module.exports = { start, tick, runForPerson, buildPrep, buildMorning };
+module.exports = { start, tick, runForPerson, buildPrep, buildMorning, focusFor, sameIdea };
